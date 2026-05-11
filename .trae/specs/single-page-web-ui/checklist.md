@@ -1,0 +1,7 @@
+- [x] 所有功能卡片在同一页面中，无分页切换
+- [x] 页面底部无 tab-bar 导航
+- [x] header 中无 pageTitle 元素
+- [x] 无 switchPage() 函数和滑动切换逻辑
+- [x] 相邻卡片之间恰好一个空行，无连续空行
+- [x] 人来上电状态显示使用 d.wifiDetectTarget 而非 d.target
+- [x] 编译通过 (`pio run -e esp12e` 成功)
