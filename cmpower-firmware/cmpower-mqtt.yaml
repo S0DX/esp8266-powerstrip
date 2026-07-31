@@ -1,0 +1,707 @@
+# ============================================================================
+# CMPOWER-W1 智能插排 ESPHome 固件配置 (MQTT版本)
+# 从固件 cmpower-mqtt20260522mv2.bin 反编译还原
+# 固件版本: 6.2.0 (ESPHome 2026.5.0)
+# 还原日期: 2026-07-29
+# ============================================================================
+
+substitutions:
+  node_name: "cmpower"
+
+# https://esphome.io/guides/configuration-types.html
+esphome:
+  name: ${node_name}
+  comment: "RouterOS.cn"
+  friendly_name: 'CMPOWER-W1'
+  project:
+    name: 'ROUTEROS_CN.CMPOWER-W1'
+    version: '6.2.0'
+  name_add_mac_suffix: true
+  min_version: '2026.2.0'
+  on_boot:
+    - priority: 0
+      then:
+        - lambda: |-
+            if(nullptr != esphome::captive_portal::global_captive_portal)
+            {
+              if(esphome::captive_portal::global_captive_portal->is_active() && !id(${node_name}_wifi).is_connected())
+              {
+                id(id_led_red).turn_on().perform();
+              }
+            }
+esp8266:
+  board: esp12e
+  restore_from_flash: true
+
+preferences:
+  flash_write_interval: 300s
+
+external_components:
+  ####local mode####
+  - source:
+     type: local
+     path: components
+  ####git mode######
+  # - source: github://routeroscn/esphome_sy7t609/components@dev
+    # components: [ sy7t609 ]
+    # refresh: 10s
+
+wifi:
+  # ssid: "你的WiFi名称"
+  # password: "你的WiFi密码"
+  id: ${node_name}_wifi
+  fast_connect: false
+  min_auth_mode: WPA2
+  # power_save_mode: HIGH
+  # domain: ""
+  reboot_timeout: 600s
+  on_connect:
+    - lambda: |-
+        id(id_led_blue).turn_on().perform();
+        id(id_led_red).turn_off().perform();
+  on_disconnect:
+    - lambda: id(id_led_blue).turn_off().perform();
+  ap:
+    ap_timeout: 60s
+captive_portal:
+mdns:
+  disabled: false
+
+# ============================================================================
+# MQTT 配置 (从固件中提取的配置)
+# broker: 192.168.1.11
+# username: admin  password: admin888
+# ============================================================================
+mqtt:
+  broker: "192.168.1.11"
+  port: 1883
+  username: "admin"
+  password: "admin888"
+  discovery: true
+  discovery_prefix: "homeassistant"
+  reboot_timeout: 0s
+  birth_message:
+    topic: cmpower/status
+    payload: "online"
+  will_message:
+    topic: cmpower/status
+    payload: "offline"
+
+# https://esphome.io/components/web_server
+web_server:
+  port: 80
+  version: 3
+  auth:
+    username: "admin"
+    password: "admin888"
+  sorting_groups:
+    - id: device_info
+      name: "诊断"
+      sorting_weight: 10
+    - id: power_info
+      name: "传感器"
+      sorting_weight: 20
+    - id: device_control
+      name: "控制"
+      sorting_weight: 30
+    - id: device_config
+      name: "配置"
+      sorting_weight: 40
+  #local: true
+  # log: false
+  # include_internal: true
+
+logger:
+  level: INFO
+  logs:
+    sensor: NONE
+  baud_rate: 0
+
+# ============================================================================
+# GPIO 输出定义
+# 引脚分配(从原理图和固件确认):
+#   GPIO0  - 主继电器控制 (inverted)
+#   GPIO4  - 电源按键 (input, pullup, inverted)
+#   GPIO5  - 白色LED (分控继电器指示灯, inverted)
+#   GPIO12 - 从继电器控制 (inverted)
+#   GPIO14 - 红色LED (inverted)
+#   GPIO15 - 继电器触发使能 (inverted)
+#   GPIO16 - 蓝色LED (inverted)
+#   GPIO1  - UART TX (SY7T609通信)
+#   GPIO3  - UART RX (SY7T609通信)
+# ============================================================================
+output:
+  #主、从继电器触发引脚
+  - platform: gpio
+    id: id_pin_trigger_relay_enable
+    pin:
+      number: GPIO15
+      inverted: true
+
+  #主继电器
+  - platform: gpio
+    id: id_pin_relay_master
+    pin:
+      number: GPIO0
+      inverted: true
+
+  #从继电器
+  - platform: gpio
+    id: id_pin_relay_slave
+    pin:
+      number: GPIO12
+      inverted: true
+
+ # 白色 LED
+  - platform: gpio
+    id: id_pin_led_white
+    pin:
+      number: GPIO5
+      inverted: true
+
+  # 蓝色 LED
+  - platform: gpio
+    id: id_pin_led_blue
+    pin:
+      number: GPIO16
+      inverted: true
+
+  # 红色 LED
+  - platform: gpio
+    id: id_pin_led_red
+    pin:
+      number: GPIO14
+      inverted: true
+
+light:
+  #白色led(分路继电器的状态)
+  - platform: binary
+    id: id_led_white
+    output: id_pin_led_white
+    restore_mode: ALWAYS_OFF
+    internal: true
+  #蓝灯常亮-wifi已连接
+  #蓝灯灯闪烁-配网模式
+  #红灯闪烁，蓝灯熄灭-wifi未连接
+  #蓝色led(wifi状态)
+  - platform: binary
+    id: id_led_blue
+    output: id_pin_led_blue
+    restore_mode: ALWAYS_OFF
+    internal: true
+  #红色led(wifi状态与配网状态)
+  - platform: status_led
+    id: id_led_red
+    output: id_pin_led_red
+    internal: true
+
+button:
+  #实现一个电平反转，触发继电器动作
+  - platform: output
+    id: id_trigger_relay_enable
+    output: id_pin_trigger_relay_enable
+    duration: 10ms
+    internal: true
+
+  #重置计量芯片寄存器上的电度量
+  - platform: template
+    name: "47.重置总电量"
+    id: id_button_reset_energy_total
+    web_server:
+      sorting_group_id: device_config
+    entity_category: config
+    on_press:
+      then:
+        - if:
+            condition:
+              switch.is_on: id_switch_operate_confirm
+            then:
+              - sy7t609.reset_energy: id_sensor_sy7t609
+              - delay: 20ms
+              - lambda: |-
+                  id(publish_message).publish_state("重置总电量");
+                  id(id_energy_counter_persist) = 0.0f;
+              - switch.turn_off: id_switch_operate_confirm
+
+  #重置esp计算的的每日电度量
+  - platform: template
+    name: "46.重置日电量"
+    id: id_button_reset_energy_daily
+    web_server:
+      sorting_group_id: device_config
+    entity_category: config
+    on_press:
+      then:
+        - if:
+            condition:
+              switch.is_on: id_switch_operate_confirm
+            then:
+              - lambda: |-
+                  id(publish_message).publish_state("重置日电量");
+                  id(id_total_daily_energy_median).publish_state_and_save(0.0f);
+              - switch.turn_off: id_switch_operate_confirm
+
+  #重置校准寄存器信息
+  - platform: template
+    name: "45.校准电力数据"
+    id: id_button_reset_calibration
+    web_server:
+      sorting_group_id: device_config
+    entity_category: config
+    on_press:
+      then:
+        - if:
+            condition:
+              switch.is_on: id_switch_operate_confirm
+            then:
+              - sy7t609.reset_calibration: id_sensor_sy7t609
+              - delay: 100ms
+              - lambda: |-
+                  id(publish_message).publish_state("校准电力数据");
+              - switch.turn_off: id_switch_operate_confirm
+
+  #重置系统(并且所有电度量)
+  - platform: template
+    name: "48.恢复出厂"
+    id: id_factoryreset_with_energy_counter
+    web_server:
+      sorting_group_id: device_config
+    entity_category: config
+    on_press:
+      then:
+        - if:
+            condition:
+              switch.is_on: id_switch_operate_confirm
+            then:
+              - lambda: |-
+                  id(publish_message).publish_state("恢复出厂设置");
+              - switch.turn_off: id_switch_operate_confirm
+              - switch.turn_on: factoryreset_with_energy_counter
+
+  #延时十秒重启总控开关
+  - platform: template
+    name: "31.延时十秒重启总控开关"
+    id: id_delay_master
+    web_server:
+      sorting_group_id: device_control
+    on_press:
+      then:
+        - if:
+            condition:
+              switch.is_on: id_relay_master_real
+            then:
+              - switch.turn_off: id_relay_master_logic
+              - switch.turn_off: switch_button_lock
+              - delay: 10s
+              - switch.turn_on: switch_button_lock
+              - switch.turn_on: id_relay_master_logic
+
+switch:
+  #重置系统(并且所有电度量)
+  - platform: template
+    id: factoryreset_with_energy_counter
+    internal: true
+    optimistic: true
+    on_turn_on:
+      then:
+        - sy7t609.reset_energy: id_sensor_sy7t609
+        - delay: 20ms
+        - lambda: |-
+            id(id_energy_counter_persist) = 0.0f;
+            id(id_total_daily_energy_median).publish_state_and_save(0.0f);
+        - switch.toggle: id_factoryreset
+
+  - platform: restart
+    name: "49.重启系统"
+    id: id_restart
+    entity_category: config
+    web_server:
+      sorting_group_id: device_config
+    on_turn_on:
+      - lambda: |-
+          id(publish_message).publish_state("重启系统");
+
+  - platform: factory_reset
+    internal: true
+    id: id_factoryreset
+
+  - platform: template
+    name: "41.启用过流过压过温保护"
+    icon: mdi:shield-check
+    id: enable_protection_switch
+    web_server:
+      sorting_group_id: device_config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("RouterOS.cn", "启用保护 电流>10A 电压>250V 温度>85c");
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("RouterOS.cn", "禁用过流过压过温保护");
+
+  - platform: template
+    name: "42.启用按键"
+    id: switch_button_lock
+    icon: mdi:trackpad-lock
+    web_server:
+      sorting_group_id: device_config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("RouterOS.cn", "启用按键操作");
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("RouterOS.cn", "关闭按键操作");
+
+  - platform: template
+    name: "44.启用下面的四个操作"
+    id: id_switch_operate_confirm
+    icon: mdi:shield-lock
+    web_server:
+      sorting_group_id: device_config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    turn_on_action:
+      - delay: 1min
+      - switch.turn_off: id_switch_operate_confirm
+
+  #主继电器-逻辑开关
+  #由于两个继电器可以由esp芯片独立控制，可能会出现：
+  # [主继电器]断开，[从继电器]打开，但此时[从继电器]的线路是没有电的
+  # 使用逻辑开关控制[从继电器]的实际通电状态
+  - platform: template
+    name: "32.总控开关"
+    id: id_relay_master_logic
+    web_server:
+      sorting_group_id: device_control
+    lambda: |-
+      return id(id_relay_master_real).state;
+    restore_mode: DISABLED
+    turn_on_action:
+      - switch.turn_on: id_relay_master_real
+    turn_off_action:
+      - switch.turn_off: id_relay_master_real
+
+  #从继电器-逻辑开关
+  - platform: template
+    name: "33.分控开关"
+    id: id_relay_slave_logic
+    web_server:
+      sorting_group_id: device_control
+    lambda: |-
+      return id(id_relay_master_real).state && id(id_relay_slave_real).state;
+    restore_mode: DISABLED
+    turn_on_action:
+      - switch.turn_on: id_relay_slave_real
+      - switch.turn_on: id_relay_master_real
+    turn_off_action:
+      - switch.turn_off: id_relay_slave_real
+
+  #主继电器-真实开关
+  - platform: output
+    id: id_relay_master_real
+    output: id_pin_relay_master
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - button.press: id_trigger_relay_enable
+      - lambda: |-
+          if(id(id_relay_slave_real).state)  id(id_led_white).turn_on().perform();
+    on_turn_off:
+      - button.press: id_trigger_relay_enable
+      - lambda: |-
+          id(id_led_white).turn_off().perform();
+    internal: true
+
+  #从继电器-真实开关
+  - platform: output
+    id: id_relay_slave_real
+    output: id_pin_relay_slave
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - button.press: id_trigger_relay_enable
+      - lambda: |-
+          if(id(id_relay_master_real).state)  id(id_led_white).turn_on().perform();
+    on_turn_off:
+      - button.press: id_trigger_relay_enable
+      - lambda: |-
+          id(id_led_white).turn_off().perform();
+    internal: true
+
+#插排电源按钮
+binary_sensor:
+  - platform: gpio
+    id: id_power_key
+    internal: true
+    pin:
+      number: GPIO4
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    #插排电源按钮单击、双击、长按功能
+    on_multi_click:
+      # 长按6秒以上，重置为出厂模式，进入配网状态
+      - timing:
+          - ON for at least 6s
+        then:
+          - lambda: |-
+              if (id(switch_button_lock).state) {
+                id(factoryreset_with_energy_counter).turn_on();
+              } else {
+                ESP_LOGW("RouterOS.cn", "按键重置操作失败,按键操作被禁用.");
+                id(publish_message).publish_state("按键重置操作失败");
+              }
+      # 双击 - 切换总控开关
+      - timing:
+          - ON for at most 0.5s
+          - OFF for at most 0.5s
+          - ON for at most 0.5s
+          - OFF for at least 0.2s
+        then:
+          - lambda: |-
+              if (id(switch_button_lock).state) {
+                id(id_relay_master_logic).toggle();
+              } else {
+                ESP_LOGW("RouterOS.cn", "双击操作失败,按键操作被禁用.");
+                id(publish_message).publish_state("按键双击操作失败");
+              }
+      # 单击 - 切换分控开关
+      - timing:
+          - ON for at most 0.3s
+          - OFF for at least 0.2s
+        then:
+          - lambda: |-
+              if (id(switch_button_lock).state) {
+                id(id_relay_slave_logic).toggle();
+              } else {
+                ESP_LOGW("RouterOS.cn", "单击操作失败,按键操作被禁用.");
+                id(publish_message).publish_state("按键单击操作失败");
+              }
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Asia/Shanghai"
+    update_interval: 59min
+    servers:
+      - ntp.aliyun.com
+      - ntp.ubuntu.com
+
+# ============================================================================
+# UART 配置 - SY7T609 电能计量芯片通信
+# TX: GPIO1 (TXD0), RX: GPIO3 (RXD0), Baud: 9600
+# ============================================================================
+uart:
+  tx_pin: 1
+  rx_pin: 3
+  baud_rate: 9600
+  stop_bits: 1
+  data_bits: 8
+  parity: NONE
+
+# ============================================================================
+# 过压恢复脚本
+# 电压超过250V时自动断开总控，30秒后检测电压是否恢复正常
+# ============================================================================
+script:
+  - id: overvoltage_recovery_script
+    mode: restart
+    then:
+      - delay: 30s
+      - lambda: |-
+          float v = id(id_sensor_voltage).state;
+          if (v <= 250) {
+            id(id_relay_master_logic).turn_on();
+            id(publish_message).publish_state("过压解除");
+            ESP_LOGI("RouterOS.cn", "总控继电器恢复");
+          } else {
+            ESP_LOGW("RouterOS.cn", "电压仍高，继续等待恢复");
+            id(overvoltage_recovery_script).execute();
+          }
+
+# ============================================================================
+# 传感器定义
+# ============================================================================
+sensor:
+  # SY7T609 电能计量芯片传感器
+  - platform: sy7t609
+    id: id_sensor_sy7t609
+    power_factor:
+      name: "26.功率因数"
+      id: id_sensor_pf
+      web_server:
+        sorting_group_id: power_info
+    voltage:
+      name: "21.电压"
+      id: id_sensor_voltage
+      web_server:
+        sorting_group_id: power_info
+      on_value_range:
+        - above: 250
+          then:
+            - lambda: |-
+                if (id(enable_protection_switch).state) {
+                  if (id(id_relay_master_logic).state) {
+                    id(id_relay_master_logic).turn_off();
+                    ESP_LOGE("RouterOS.cn", "当前电压大于 250V 自动关闭总控开关");
+                    id(publish_message).publish_state("过压保护");
+                    id(overvoltage_recovery_script).execute();
+                  }
+                }
+    current:
+      name: "22.电流"
+      id: id_sensor_current
+      web_server:
+        sorting_group_id: power_info
+      on_value_range:
+        - above: 10
+          then:
+            - lambda: |-
+                if (id(enable_protection_switch).state) {
+                  id(id_relay_master_logic).turn_off();
+                  ESP_LOGE("RouterOS.cn", "当前电流大于 10A 自动关闭总控开关");
+                  id(publish_message).publish_state("过流保护");
+                }
+    power:
+      name: "24.功率"
+      id: id_sensor_power
+      web_server:
+        sorting_group_id: power_info
+    reactive_power:
+      name: "25.无功功率"
+      id: id_sensor_reactive_power
+      unit_of_measurement: "VAR"
+      web_server:
+        sorting_group_id: power_info
+    energy:
+      name: "28.重启后电量"
+      id: id_sensor_energy
+      web_server:
+        sorting_group_id: power_info
+    chip_temperature:
+      name: "19.芯片温度"
+      id: id_sensor_chip_temperature
+      web_server:
+        sorting_group_id: device_info
+      on_value_range:
+        - above: 85
+          then:
+            - lambda: |-
+                if (id(enable_protection_switch).state) {
+                  if (id(id_relay_master_logic).state) {
+                    id(id_relay_master_logic).turn_off();
+                    ESP_LOGE("RouterOS.cn", "当前温度高于 85°C 自动关闭总控开关");
+                    id(publish_message).publish_state("过温保护");
+                  }
+                }
+    update_interval: 3s
+
+  # 日电量 (断电记忆)
+  - platform: total_daily_energy
+    name: "27.日电量"
+    id: id_total_daily_energy_median
+    power_id: id_sensor_power
+    accuracy_decimals: 2
+    device_class: "energy"
+    state_class: "total_increasing"
+    icon: "mdi:counter"
+    restore: true
+    unit_of_measurement: Wh
+    web_server:
+      sorting_group_id: power_info
+
+  # 总电量持久化 (断电也保留)
+  # SY7T609的电度量计数器是内存存储，断电会丢失
+  # 使用ESP的全局变量存储电度量，实现断电记忆
+  - platform: copy
+    name: "29.总电量"
+    id: id_sensor_energy_counter_persist
+    web_server:
+      sorting_group_id: power_info
+    source_id: id_sensor_energy
+    filters:
+        - lambda: |-
+            static float previous_x = 0.0f;
+            static bool first_run = true;
+
+            if (first_run) {
+                previous_x = x;
+                first_run = false;
+                return id(id_energy_counter_persist);
+            }
+            float delta = x - previous_x;
+            // 只累加正增量
+            if (delta > 0.0f) {
+                id(id_energy_counter_persist) += delta;
+            }
+            previous_x = x;
+            return id(id_energy_counter_persist);
+
+  # 系统运行时间
+  - platform: uptime
+    id: id_system_uptime
+    name: "11.系统运行时间"
+    entity_category: diagnostic
+    update_interval: 5s
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    icon: mdi:clock-start
+    web_server:
+      sorting_group_id: device_info
+
+  # WiFi信号强度
+  - platform: wifi_signal
+    name: "14.网络信号强度"
+    id: id_wifi_signal
+    update_interval: 10s
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: device_info
+
+# ============================================================================
+# 文本传感器
+# ============================================================================
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "15.网络地址"
+      entity_category: diagnostic
+      icon: mdi:ip-network
+      web_server:
+        sorting_group_id: device_info
+    ssid:
+      name: "13.网络无线SSID"
+      entity_category: diagnostic
+      icon: mdi:router-wireless
+      web_server:
+        sorting_group_id: device_info
+
+  # 系统讯息 (用于显示操作状态消息)
+  - platform: template
+    name: "12.系统讯息"
+    id: publish_message
+    icon: "mdi:message-text"
+    update_interval: 60min
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: device_info
+    lambda: |-
+      if (id(publish_message).state.empty()) {
+        return std::string("20260522");
+      } else {
+        return id(publish_message).state;
+      }
+
+# ============================================================================
+# 全局变量 - 电度量持久化存储
+# ============================================================================
+globals:
+  - id: id_energy_counter_persist
+    type: float
+    restore_value: yes
+    initial_value: '0.0'

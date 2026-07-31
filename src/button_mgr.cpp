@@ -1,15 +1,10 @@
 #include "button_mgr.h"
 #include "config.h"
-#include "gpio_mgr.h"
 
-unsigned long ButtonHandler::last_press_time_ = 0;
 unsigned long ButtonHandler::last_release_time_ = 0;
-int ButtonHandler::click_count_ = 0;
-bool ButtonHandler::long_press_triggered_ = false;
-void (*ButtonHandler::callback_)(ClickType) = nullptr;
+unsigned long ButtonHandler::debounce_start_time_ = 0;
+void (*ButtonHandler::callback_)(ButtonHandler::ClickType) = nullptr;
 int ButtonHandler::button_state_ = HIGH;
-bool ButtonHandler::short_press_pending_ = false;
-bool ButtonHandler::long_press_in_progress_ = false;
 
 void ButtonHandler::init() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -21,52 +16,35 @@ void ButtonHandler::setCallback(void (*callback)(ClickType)) {
 
 void ButtonHandler::handle() {
     int reading = digitalRead(BUTTON_PIN);
+    unsigned long now = millis();
 
     if (reading != button_state_) {
-        unsigned long now = millis();
+        // 状态发生变化，启动去抖计时
+        if (debounce_start_time_ == 0) {
+            debounce_start_time_ = now;
+        }
+        if (now - debounce_start_time_ >= BUTTON_DEBOUNCE_MS) {
+            // 新状态稳定超过去抖时间，接受状态变更
+            button_state_ = reading;
+            debounce_start_time_ = 0;
 
-        if (reading == LOW) {
-            last_press_time_ = now;
-            long_press_triggered_ = false;
-            long_press_in_progress_ = false;
-
-            if (now - last_release_time_ > BUTTON_DEBOUNCE_MS) {
-                click_count_++;
-            }
-        } else {
-            last_release_time_ = now;
-
-            if (!long_press_triggered_) {
-                unsigned long press_duration = now - last_press_time_;
-                if (press_duration < BUTTON_SINGLE_CLICK_MS) {
-                    short_press_pending_ = true;
+            if (button_state_ == LOW) {
+                // 按下：再检查与上次释放的间隔，避免释放后的抖动被误判为新的按下
+                if (now - last_release_time_ > BUTTON_DEBOUNCE_MS) {
+                    if (callback_ != nullptr) {
+                        callback_(CLICK_PRESS);
+                    }
+                }
+            } else {
+                // 释放
+                last_release_time_ = now;
+                if (callback_ != nullptr) {
+                    callback_(CLICK_RELEASE);
                 }
             }
         }
-    }
-
-    button_state_ = reading;
-
-    if (button_state_ == LOW && !long_press_triggered_) {
-        unsigned long press_duration = millis() - last_press_time_;
-        if (press_duration >= BUTTON_LONG_PRESS_MS) {
-            long_press_triggered_ = true;
-            long_press_in_progress_ = true;
-            short_press_pending_ = false;
-            if (callback_ != nullptr) {
-                callback_(CLICK_LONG);
-            }
-        }
-    }
-
-    if (click_count_ > 0 && millis() - last_release_time_ > BUTTON_DOUBLE_CLICK_MS) {
-        if (!long_press_in_progress_ && click_count_ >= 2 && callback_ != nullptr) {
-            callback_(CLICK_DOUBLE);
-        } else if (short_press_pending_ && callback_ != nullptr) {
-            callback_(CLICK_SINGLE);
-        }
-        click_count_ = 0;
-        short_press_pending_ = false;
-        long_press_in_progress_ = false;
+    } else {
+        // 状态稳定，重置去抖计时
+        debounce_start_time_ = 0;
     }
 }

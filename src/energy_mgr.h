@@ -31,6 +31,7 @@ private:
     static int month_start_year_;
     static int month_start_month_;
     static float monthly_history_[3];
+    static float last_saved_energy_;
 };
 
 #endif

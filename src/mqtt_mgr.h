@@ -6,10 +6,10 @@
 #include <ESP8266WiFi.h>
 
 struct MQTTConfig {
-    char server[64];
+    char server[33];
     uint16_t port;
-    char username[32];
-    char password[32];
+    char username[21];
+    char password[21];
     bool enabled;
 };
 

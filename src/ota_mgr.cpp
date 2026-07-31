@@ -1,7 +1,6 @@
 #include "ota_mgr.h"
 #include "config.h"
 #include "wifi_mgr.h"
-#include "gpio_mgr.h"
 #include <ESP8266mDNS.h>
 
 static bool ota_started = false;
@@ -26,7 +25,7 @@ void OTAManager::init(const char* hostname, const char* password) {
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         static uint8_t last = 0;
-        uint8_t pct = progress / (total / 100);
+        uint8_t pct = (total > 0) ? (progress * 100 / total) : 0;
         if (pct != last) {
             Serial.printf("[OTA] Progress: %u%%\r", pct);
             last = pct;
@@ -63,17 +62,17 @@ void OTAManager::init(const char* hostname, const char* password) {
 void OTAManager::handle() {
     if (!ota_started) {
         if (WiFi.status() == WL_CONNECTED) {
-            String hostname = GPIOManager::getMDNSHostname();
-            if (!MDNS.begin(hostname.c_str())) {
-                Serial.printf("[OTA] Error setting up MDNS responder for '%s'!\n", hostname.c_str());
-            } else {
-                Serial.printf("[OTA] mDNS responder started: %s.local\n", hostname.c_str());
+            // STA 已连接：断开 AP 避免双模路由问题，再启动 OTA
+            if (WiFi.getMode() & WIFI_AP) {
+                Serial.println("[OTA] Disconnecting AP mode for reliable OTA...");
+                WiFi.softAPdisconnect(true);
+                delay(100);
             }
-
+            // OTA 使用 WiFiManager 已启动的 mDNS，避免重复初始化冲突
             ArduinoOTA.begin();
             String ipStr = WiFi.localIP().toString();
-            Serial.printf("[OTA] Started on %s:%d (hostname: %s)\n", ipStr.c_str(), OTA_PORT, hostname.c_str());
-            Serial.printf("[OTA] Access via: %s.local or %s\n", hostname.c_str(), ipStr.c_str());
+            Serial.printf("[OTA] Started on %s:%d (hostname: PowerStrip)\n", ipStr.c_str(), OTA_PORT);
+            Serial.printf("[OTA] Access via: PowerStrip.local or %s\n", ipStr.c_str());
             ota_started = true;
         } else if (WiFi.getMode() & WIFI_AP) {
             ArduinoOTA.begin();
@@ -91,7 +90,4 @@ void OTAManager::handle() {
         }
     }
     ArduinoOTA.handle();
-    if (ota_started && WiFi.status() == WL_CONNECTED) {
-        MDNS.update();
-    }
 }

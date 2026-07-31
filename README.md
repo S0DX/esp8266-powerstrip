@@ -1,252 +1,232 @@
-# 智能插排固件 (Smart Power Strip Firmware)
+# 智能插排固件 (Smart Power Strip Firmware) v3.6
 
-基于 ESP8266 (ESP-12E/F) 的智能插排固件，支持远程控制、电能监测、定时/倒计时功能。
+基于 ESP8266 (ESP-12E/F) 的智能插排固件，支持远程控制、电能监测、定时/倒计时功能、mDNS 局域网域名、UDP 设备发现。
 
 ## 功能特性
 
 ### 继电器控制
-- **主继电器（常通端）**：控制插座主体电源，一上电即开启
-- **从继电器（可控端）**：通过 Web 界面独立控制
+- **主继电器（总控）**：控制插座主体电源
+- **从继电器（分控）**：独立控制的输出端
+- **批量控制**：支持同时开关双继电器
 - **锁定模式**：禁用物理按键，仅 Web 端可控
 
 ### 电能监测 (SY7T609)
-- 实时电压、电流、功率显示
-- 累计用电量统计
+- 实时电压、电流、功率、功率因数显示
+- 累计用电量统计（kWh）
+- 月度/上月用电对比
+- 电费计算（可配置电价）
 - 7天用电历史记录
 
 ### 智能功能
 - **倒计时关闭**：选择时长后自动关闭继电器
-- **24小时循环**：在设定时间段内自动保持开启
-- **拔除断电保护**：当功率低于阈值时自动关闭（需先开启电能监测）
-- **人来上电**：检测指定WiFi信号（如手机热点）自动开启继电器，WiFi消失后可选择启动倒计时或恢复原状态
-- **无用电量关闭**：WiFi人来上电后，若持续无用电量则自动关闭（可配置时长）
+- **24小时循环**：最多3个时段，自动保持开启
+- **拔除断电保护**：功率低于阈值时自动关闭
+- **计费供电**：达到设定用电量后自动关闭
+- **人来上电**：检测指定WiFi信号自动开启，支持：
+  - 信号消失联锁倒计时
+  - 仅开主继电器模式
+  - 按键检测（锁定模式下物理按键触发单次扫描）
 - **MQTT 集成**：支持接入 Home Assistant 等智能家居平台
 
+### 网络功能
+- **mDNS 域名**：默认 `power.local`，支持自定义
+- **UDP 设备发现**：广播设备信息，便于 App 发现
+- **AP + STA 双模式**：配置时不断开连接
+- **Web OTA 升级**：支持网页上传固件升级
+
 ### 其他
-- WiFi 断线红灯告警（默认开启）
-- Web OTA 固件升级
-- AP + STA 双模式运行
+- WiFi 断线红灯告警（可关闭）
+- 卡片排序和显示控制
+- 物理按键单击/双击/长按支持
 
 ## 硬件要求
 
 ### 推荐硬件
 - ESP-12E 或 ESP-12F 模块
 - SY7T609 电能监测芯片
-- 双路继电器模块（总控+分控）
+- 双路锁存继电器模块（总控+分控）
 - 蓝色、红色、白色 LED 各一个
+- 物理按键一个
 
 ### GPIO 分配
 
 | GPIO | 功能 | 说明 |
 |------|------|------|
-| 0 | RELAY_MASTER_PIN | 总控继电器（兼 Flash Boot 检测） |
-| 1 | UART_TX | SY7T609 通信 |
-| 3 | UART_RX | SY7T609 通信 |
+| 0 | RELAY_MASTER_PIN | 总控继电器（兼 Flash Boot 检测）|
+| 1 | UART_TX | SY7T609 通信（GPIO1）|
+| 3 | UART_RX | SY7T609 通信（GPIO3）|
 | 4 | BUTTON_PIN | 物理按键 |
-| 5 | LED_WHITE_PIN | 可控端指示灯 |
+| 5 | LED_WHITE_PIN | 从继电器指示灯 |
 | 12 | RELAY_SLAVE_PIN | 分控继电器 |
-| 14 | LED_RED_PIN | 红色 LED |
-| 15 | RELAY_ENABLE_PIN | 继电器使能 |
-| 16 | LED_BLUE_PIN | 蓝色 LED |
+| 14 | LED_RED_PIN | 红色 LED（WiFi 状态）|
+| 15 | RELAY_ENABLE_PIN | 继电器锁存使能 |
+| 16 | LED_BLUE_PIN | 蓝色 LED（通用指示）|
 
 ## 编译与刷入
 
 ### 环境要求
 - [PlatformIO Core](https://docs.platformio.org/en/latest/core/) 或 VS Code + PlatformIO 插件
-- Python 3.8+（用于 PlatformIO）
+- Python 3.8+
 
 ### 编译固件
 ```bash
 # 克隆项目
-git clone <repository-url>
-cd esp
+git clone https://github.com/S0DX/esp-powerstrip.git
+cd esp-powerstrip
 
 # 安装依赖
 pio pkg install
 
 # 编译
-pio run
+pio run -e esp12e
 ```
 
 ### 刷入固件
+
+#### 首次刷入（USB）
 ```bash
-# 通过 USB 刷入（首次刷入需要）
-pio run --target upload
-
-# 通过 OTA 刷入（设备已在运行）
-pio run --target upload --upload-port <设备IP>
+# 修改 platformio.ini 中的 upload_port 为你的串口
+pio run -e esp12e -t upload
 ```
 
-### 预编译固件
-位于 `firmware.bin`，可通过 Web 界面上传升级。
-
-### OTA 升级密码
-**Arduino OTA**（命令行刷固件）：`ota_password`
-
-**Web 固件升级**（网页上传）：`admin`
-
-可在编译前修改 OTA 密码，修改 `src/main.cpp`：
-```cpp
-OTAManager::init("PowerStrip", "你的密码");
+#### OTA 升级（WiFi）
+```bash
+# 确保设备在局域网内，修改 upload_port 为设备 IP
+pio run -e esp12e-ota -t upload --upload-port 192.168.1.100
 ```
+
+### OTA 密码
+- **Arduino OTA**（命令行）：`ota_password`
+- **Web 固件升级**（网页）：`admin`
+
+修改密码：编辑 `src/ota_mgr.cpp` 中的 `OTAManager::init()`
 
 ## 使用说明
 
 ### 初始配置
 
-1. 首次上电后，设备会创建 AP `PowerStrip`（无密码）
+1. 首次上电，设备创建 AP `PowerStrip`（或 `PowerStrip-N`，无密码）
 2. 连接后访问 `http://192.168.4.1` 进入 Web 界面
-3. 在"系统设置"中配置 WiFi 连接
-4. 连接成功后，设备 IP 会显示在界面上
+3. 在"WiFi 状态"卡片中点击"连接 WiFi"配置网络
+4. 连接成功后，设备 IP 会显示在界面上，也可通过 `power.local` 访问
 
-### 主页功能
+### Web 界面功能
 
 #### 继电器控制卡片
-
 | 开关 | 作用 |
 |------|------|
-| **主继电器** | 控制常通端电源（插上设备即通电） |
-| **从继电器** | 控制可控端电源（独立开关） |
-| **锁定模式** | 禁用物理按键，仅 Web 可控制 |
-| **拔除断电** | 开启后，当功率低于阈值时自动关闭所有继电器 |
-
-#### 实时电量卡片
-
-| 开关 | 作用 |
-|------|------|
-| **电能监测** | 开启后显示电压、电流、功率、用电量；拔除断电功能需要此开关 |
-
-#### 用电历史卡片
-- 显示过去 7 天用电量柱状图（单位：Wh）
-
-#### WiFi 状态卡片
-
-| 开关 | 作用 |
-|------|------|
-| **WiFi断开红灯告警** | 开启后，当 WiFi 断开时红色 LED 闪烁 |
-
-#### 系统设置卡片
-
-| 设置 | 作用 |
-|------|------|
-| **AP 热点密码** | 设置 AP 模式下连接密码（至少8位） |
-
-#### 设备信息卡片
-
-| 按钮 | 作用 |
-|------|------|
-| **固件升级** | 通过 Web 上传固件文件升级 |
-| **重启设备** | 重启 ESP8266 |
-| **恢复出厂** | 清除所有配置，恢复初始状态 |
-
-### 设置页面
-
-通过底部 Tab 切换到"设置"页面：
-
-#### 倒计时关闭卡片
-
-| 设置/按钮 | 作用 |
-|-----------|------|
-| **选择时长** | 下拉选择 1/2/4/6/8/12 小时 |
-| **启动/关闭倒计时按钮** | 点击启动倒计时（同时开启双继电器），运行中点击可取消 |
-
-#### 24小时循环卡片
-
-| 设置/按钮 | 作用 |
-|-----------|------|
-| **开启时间** | 设置循环开始时间 |
-| **结束时间** | 设置循环结束时间 |
-| **启用循环开关** | 开启后在设定时间段内自动开启双继电器 |
-| **保存循环时间按钮** | 保存时间设置 |
-
-#### MQTT 配置卡片
-
-| 设置 | 作用 |
-|------|------|
-| **启用 MQTT** | 开启 MQTT 功能 |
-| **服务器地址** | MQTT broker 地址（IP 或域名） |
-| **端口号** | MQTT broker 端口（默认 1883） |
-| **用户名/密码** | 认证信息（可选） |
-
-#### 设备拔除断电设置卡片
-
-| 设置 | 作用 |
-|------|------|
-| **功率阈值** | 设置断电判定阈值（默认 0.5W，范围 0.1-5W） |
+| 主继电器 | 控制总控电源 |
+| 从继电器 | 控制分控电源 |
+| 锁定模式 | 禁用物理按键 |
 
 #### 人来上电卡片
+| 设置 | 作用 |
+|------|------|
+| 启用检测 | 开启 WiFi 信号检测 |
+| 检测目标 | 选择要检测的 WiFi 名称 |
+| 更多配置 | 按键检测、联锁倒计时、仅开主继电器、检测设置 |
 
-| 设置/按钮 | 作用 |
-|-----------|------|
-| **启用检测** | 开启WiFi信号检测功能 |
-| **检测目标** | 显示当前选择的WiFi名称 |
-| **选择WiFi** | 点击弹出WiFi列表，选择作为检测目标 |
-| **联锁倒计时** | WiFi消失时自动启动倒计时关闭 |
-| **配置选项** | 打开配置弹窗，可设置： |
-| - 检测距离 | 大（-85dBm，最远）/ 中（-70dBm）/ 小（-55dBm，最近） |
-| - 扫描间隔 | 10-300秒，默认30秒 |
-| - 无用电量关闭 | 1-600分钟，默认60分钟（0=关闭此功能） |
+#### 更多设置（二级页面）
+- **主页卡片排序**：拖拽调整卡片顺序和显示
+- **拔除断电设置**：功率阈值配置
+- **倒计时关闭**：物理按钮自动倒计时开关
+- **24小时循环**：多时段自动开关
+- **MQTT 代理**：服务器配置
+- **计费供电**：用电量阈值关闭
+- **局域网域名**：mDNS 域名自定义
 
 ### 物理按键操作
 
 | 操作 | 功能 |
 |------|------|
-| 单击 | 切换主继电器（常通端） |
-| 双击 | 切换从继电器（可控端） |
+| 短按 | 继电器全关时开主继电器；主开从关时准备关主继电器；主从都开时关闭所有继电器 |
+| 快速双按 | 第一次按下后的 200ms 内再按一次，同时开启从继电器 |
 | 长按 20秒 | 恢复出厂设置 |
+
+**锁定模式下**：
+- 单击：触发按键检测（如果开启）
+- 长按：关闭所有继电器
 
 ### LED 指示
 
 | 状态 | 蓝色 LED | 白色 LED | 红色 LED |
 |------|----------|----------|----------|
-| 24小时循环开启 | 常亮 | - | - |
-| 24小时循环关闭 | 熄灭 | - | - |
+| 从继电器开启 | - | 常亮 | - |
 | 倒计时运行中 | - | 闪烁 | - |
 | WiFi 已连接 | - | - | 熄灭 |
-| WiFi 断开 + 告警开启 | - | - | 闪烁 |
-
-## 控制逻辑优先级
-
-```
-1. 拔除断电（最高）→ 关闭所有继电器，不清除定时/循环状态
-2. 手动控制 → 直接操作继电器
-3. 24小时循环 ↔ 倒计时关闭（互斥，不能同时运行）
-```
-
-### 详细规则
-
-| 动作 | 倒计时 | 24小时循环 | 继电器 |
-|------|--------|------------|--------|
-| 开启拔除断电 | 保持 | 保持 | 保持 |
-| 拔除断电触发 | 保持 | 保持 | **关闭** |
-| 手动开继电器 | **停止** | 保持 | 打开 |
-| 手动关继电器 | 保持 | 保持 | 关闭 |
-| 倒计时到期 | 停止 | 保持 | 关闭 |
-| 循环时间段到达 | 保持 | 开启 | 打开 |
-| 循环时间段结束 | 保持 | 关闭 | 关闭 |
+| WiFi 断开 | - | - | 闪烁（可关闭）|
+| 24小时循环开启 | 常亮 | - | - |
 
 ## API 接口
 
-设备提供 RESTful API，可用于第三方集成：
+### 状态查询
+```http
+GET /api/status
+```
+返回完整设备状态（JSON）
 
-| 接口 | 方法 | 参数 | 说明 |
-|------|------|------|------|
-| `/api/status` | GET | - | 获取所有状态 |
-| `/api/relay` | GET/POST | `m`=0/1, `s`=0/1 | 控制继电器 |
-| `/api/lock` | GET/POST | `locked`=true/false | 锁定模式 |
-| `/api/timer` | GET | `enabled`, `duration` | 倒计时控制 |
-| `/api/cycle` | GET | `enabled` | 24小时循环 |
-| `/api/meter` | GET/POST | `a`=on/off | 电能监测开关 |
-| `/api/mqtt` | GET/POST | MQTT配置 | MQTT设置 |
-| `/api/poweroff` | GET/POST | `enabled`, `threshold` | 拔除断电设置 |
-| `/api/billing` | GET/POST | 计费供电配置 | 用电量阈值关闭 |
-| `/api/wifidetect` | GET/POST | WiFi检测配置 | 人来上电设置 |
-| `/api/scan` | GET | - | 扫描WiFi网络 |
-| `/api/connect` | POST | `ssid`, `password` | 连接WiFi |
-| `/api/history` | GET | - | 用电历史 |
-| `/api/restart` | POST | - | 重启设备 |
-| `/api/reset` | POST | - | 恢复出厂 |
-| `/api/ota` | POST | 固件文件 | OTA升级 |
+### 继电器控制
+```http
+GET /api/relay?m=on&s=on    # 开启双继电器
+GET /api/relay?m=off        # 关闭主继电器
+GET /api/relay?s=off        # 关闭从继电器
+```
+
+### 定时器
+```http
+GET /api/timer?enabled=true&duration=2   # 开启2小时倒计时
+GET /api/timer?enabled=false             # 关闭倒计时
+```
+
+### 人来上电
+```http
+GET /api/wifidetect?enabled=true         # 开启检测
+GET /api/wifidetect?enabled=false        # 关闭检测
+GET /api/wifidetect?linkTimer=true       # 开启联锁倒计时
+GET /api/wifidetect?onlyMaster=true      # 仅开主继电器
+```
+
+### 按键检测
+```http
+GET /api/button_detect?enabled=true      # 开启按键检测
+```
+
+### mDNS 域名
+```http
+GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
+```
+
+### 其他接口
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/lock` | GET/POST | 锁定模式 |
+| `/api/cycle` | GET/POST | 24小时循环 |
+| `/api/meter` | GET/POST | 电能监测开关 |
+| `/api/mqtt` | GET/POST | MQTT 配置 |
+| `/api/poweroff` | GET/POST | 拔除断电设置 |
+| `/api/billing` | GET/POST | 计费供电 |
+| `/api/scan` | GET | 扫描 WiFi |
+| `/api/connect` | POST | 连接 WiFi |
+| `/api/history` | GET | 用电历史 |
+| `/api/restart` | POST | 重启设备 |
+| `/api/reset` | POST | 恢复出厂 |
+| `/api/reset_energy` | POST | 清零电量记录 |
+
+## UDP 设备发现
+
+设备每 3 秒广播一次 JSON 数据到 `255.255.255.255:4210`：
+
+```json
+{
+  "name": "PowerStrip",
+  "ip": "192.168.1.100",
+  "mac": "A4:CF:12:34:56:78",
+  "ver": "4.9",
+  "hostname": "power"
+}
+```
+
+安卓 App 可监听此广播自动发现设备。
 
 ## 技术细节
 
@@ -254,57 +234,68 @@ OTAManager::init("PowerStrip", "你的密码");
 
 | 地址 | 功能 |
 |------|------|
-| 0-31 | WiFi SSID |
-| 32-95 | WiFi 密码 |
-| 128-135 | 用电累计 |
-| 136-291 | 用电历史 |
-| 200 | 锁定状态 |
-| 201 | 倒计时启用 |
-| 202 | 倒计时时长 |
-| 203 | 红灯告警 |
-| 204-209 | 24小时循环设置 |
-| 210 | SY7T609 启用 |
-| 211 | Flash 模式标志 |
-| 212 | 拔除断电启用 |
-| 213 | 拔除断电阈值 |
-| 230-253 | AP 密码 |
-| 254 | WiFi 配置 Magic |
+| 0-63 | WiFi SSID/密码 |
+| 128-291 | 用电统计和历史 |
+| 200-217 | 系统设置 |
+| 218-256 | WiFi 检测配置 |
+| 257 | AP 名称后缀 |
+| 296-327 | mDNS 域名 |
+| 510 | 卡片可见性 |
+| 511 | 按钮自动倒计时 |
+
+### 控制逻辑优先级
+
+```
+1. 拔除断电（最高）→ 关闭继电器，不清除定时/循环
+2. 手动控制 → 直接操作继电器
+3. 24小时循环 ↔ 倒计时关闭（互斥）
+```
 
 ### 调试输出
-
-- SY7T609 启用时：调试输出到 GPIO2 (Serial1)
-- SY7T609 禁用时：调试输出到 Serial (GPIO1)
-
-### 功耗优化
-
-- WiFi 轻睡眠模式 (`WIFI_LIGHT_SLEEP`)
-- `delayMicroseconds(100)` 空闲处理
+- 串口波特率：115200
+- SY7T609 启用时：输出到 GPIO2 (Serial1)
+- SY7T609 禁用时：输出到 Serial (GPIO1)
 
 ## 目录结构
 
 ```
-esp/
-├── src/
-│   ├── main.cpp          # 主程序入口
-│   ├── config.h         # 配置和常量定义
-│   ├── gpio_mgr.cpp/h   # GPIO 和继电器管理
-│   ├── button_mgr.cpp/h # 物理按键处理
-│   ├── wifi_mgr.cpp/h   # WiFi 管理
-│   ├── web_config.cpp/h # Web 服务器和页面
-│   ├── sy7t609.cpp/h    # 电能监测芯片驱动
-│   ├── energy_mgr.cpp/h # 用电统计
-│   ├── mqtt_mgr.cpp/h   # MQTT 客户端
-│   └── ota_mgr.cpp/h    # OTA 升级
-├── platformio.ini       # PlatformIO 配置
-├── firmware.bin        # 预编译固件
-└── README.md           # 本文档
+esp-powerstrip/
+├── src/                      # 源代码
+│   ├── main.cpp             # 主程序
+│   ├── config.h             # 配置定义
+│   ├── gpio_mgr.cpp/h       # GPIO/继电器管理
+│   ├── button_mgr.cpp/h     # 按键处理
+│   ├── wifi_mgr.cpp/h       # WiFi 管理
+│   ├── web_config.cpp/h     # Web 服务器
+│   ├── sy7t609.cpp/h        # 电能芯片驱动
+│   ├── energy_mgr.cpp/h     # 用电统计
+│   ├── mqtt_mgr.cpp/h       # MQTT 客户端
+│   └── ota_mgr.cpp/h        # OTA 升级
+├── include/                  # 头文件目录
+├── lib/                      # 库目录
+├── test/                     # 测试目录
+├── .trae/                    # Trae IDE 配置
+├── platformio.ini           # PlatformIO 配置
+├── cmpower原理图.svg        # 硬件原理图
+├── wiring_diagram.html      # 接线图
+└── README.md                # 本文档
 ```
+
+## 依赖库
+
+- [PubSubClient](https://github.com/knolleary/pubsubclient) - MQTT 客户端
+- [EspSoftwareSerial](https://github.com/plerup/espsoftwareserial) - 软件串口
 
 ## 许可证
 
 MIT License
 
-## 致谢
+## 版本历史
 
-- [PubSubClient](https://github.com/knolleary/pubsubclient) - MQTT 客户端库
-- [EspSoftwareSerial](https://github.com/plerup/espsoftwareserial) - 软件串口库
+- v3.6 - 计费供电支持能量/金额/时长阈值及历史账单，人来上电"等待记录"初始状态修复，物理按钮单击/双击功能调整，AP 模式 Captive Portal 重定向到 power.local
+- v3.5 - 新增 mDNS 局域网域名自定义（默认 power.local）
+- v3.4 - 新增 UDP 设备发现广播
+- v3.3 - 人来上电倒计时防重检、按键检测、更多配置二级页面
+- v3.2 - 物理按钮自动倒计时、WiFi 睡眠模式优化
+- v3.1 - 按钮双击响应优化
+- v3.0 - 卡片排序、AP 后缀、WiFi 检测、继电器同步修复

@@ -5,12 +5,14 @@
 #include "sy7t609.h"
 #include "energy_mgr.h"
 
-#define EEPROM_MQTT_MAGIC_ADDR   136
-#define EEPROM_MQTT_SERVER_ADDR  137
-#define EEPROM_MQTT_PORT_ADDR    201
-#define EEPROM_MQTT_USER_ADDR    203
-#define EEPROM_MQTT_PASS_ADDR    235
-#define EEPROM_MQTT_ENABLED_ADDR 267
+#define EEPROM_MQTT_MAGIC_ADDR   (EEPROM_MQTT_CONFIG_ADDR + 0)
+#define EEPROM_MQTT_ENABLED_ADDR (EEPROM_MQTT_CONFIG_ADDR + 1)
+#define EEPROM_MQTT_SERVER_ADDR  (EEPROM_MQTT_CONFIG_ADDR + 2)
+#define EEPROM_MQTT_PORT_ADDR    (EEPROM_MQTT_CONFIG_ADDR + 34)
+#define EEPROM_MQTT_USER_ADDR    (EEPROM_MQTT_CONFIG_ADDR + 36)
+#define EEPROM_MQTT_PASS_ADDR    (EEPROM_MQTT_CONFIG_ADDR + 56)
+
+#define EEPROM_MQTT_MAGIC        0x55
 
 WiFiClient MQTTManager::wifiClient_;
 PubSubClient MQTTManager::client_(MQTTManager::wifiClient_);
@@ -28,20 +30,39 @@ void MQTTManager::init() {
     client_.setCallback(onMessage);
 }
 
+static void migrateMqttConfig() {
+    uint8_t oldMagic = EEPROM.read(EEPROM_MQTT_MAGIC_ADDR_OLD);
+    if (oldMagic != EEPROM_MQTT_MAGIC) return;
+
+    // 旧地址：316 magic, 317 enabled, 318-349 server, 350-351 port, 352-371 user, 372-391 pass
+    EEPROM.write(EEPROM_MQTT_MAGIC_ADDR, EEPROM_MQTT_MAGIC);
+    EEPROM.write(EEPROM_MQTT_ENABLED_ADDR, EEPROM.read(317));
+    for (int i = 0; i < 32; i++) EEPROM.write(EEPROM_MQTT_SERVER_ADDR + i, EEPROM.read(318 + i));
+    EEPROM.write(EEPROM_MQTT_PORT_ADDR, EEPROM.read(350));
+    EEPROM.write(EEPROM_MQTT_PORT_ADDR + 1, EEPROM.read(351));
+    for (int i = 0; i < 20; i++) EEPROM.write(EEPROM_MQTT_USER_ADDR + i, EEPROM.read(352 + i));
+    for (int i = 0; i < 20; i++) EEPROM.write(EEPROM_MQTT_PASS_ADDR + i, EEPROM.read(372 + i));
+    EEPROM.write(EEPROM_MQTT_MAGIC_ADDR_OLD, 0); // 擦除旧 magic
+    EEPROM.commit();
+    Serial.println("[MQTT] Migrated config to new EEPROM layout");
+}
+
 void MQTTManager::loadConfig() {
-    if (EEPROM.read(EEPROM_MQTT_MAGIC_ADDR) != 0x55) {
+    migrateMqttConfig();
+
+    if (EEPROM.read(EEPROM_MQTT_MAGIC_ADDR) != EEPROM_MQTT_MAGIC) {
         memset(&config_, 0, sizeof(config_));
         config_.enabled = false;
         config_.port = 1883;
         return;
     }
-    
+
     config_.enabled = (EEPROM.read(EEPROM_MQTT_ENABLED_ADDR) == 1);
     
     int len;
     
     len = 0;
-    for (int i=0; i<64; i++) {
+    for (int i=0; i<32; i++) {
         char c = EEPROM.read(EEPROM_MQTT_SERVER_ADDR + i);
         if (c >= 32 && c <= 126) config_.server[len++] = c;
         else break;
@@ -51,7 +72,7 @@ void MQTTManager::loadConfig() {
     config_.port = (EEPROM.read(EEPROM_MQTT_PORT_ADDR) << 8) | EEPROM.read(EEPROM_MQTT_PORT_ADDR + 1);
     
     len = 0;
-    for (int i=0; i<32; i++) {
+    for (int i=0; i<20; i++) {
         char c = EEPROM.read(EEPROM_MQTT_USER_ADDR + i);
         if (c >= 32 && c <= 126) config_.username[len++] = c;
         else break;
@@ -59,7 +80,7 @@ void MQTTManager::loadConfig() {
     config_.username[len] = '\0';
     
     len = 0;
-    for (int i=0; i<32; i++) {
+    for (int i=0; i<20; i++) {
         char c = EEPROM.read(EEPROM_MQTT_PASS_ADDR + i);
         if (c >= 32 && c <= 126) config_.password[len++] = c;
         else break;
@@ -76,16 +97,16 @@ void MQTTManager::loadConfig() {
 
 void MQTTManager::saveConfig(const MQTTConfig& config) {
     config_ = config;
-    EEPROM.write(EEPROM_MQTT_MAGIC_ADDR, 0x55);
+    EEPROM.write(EEPROM_MQTT_MAGIC_ADDR, EEPROM_MQTT_MAGIC);
     EEPROM.write(EEPROM_MQTT_ENABLED_ADDR, config.enabled ? 1 : 0);
     
-    for (int i=0; i<64; i++) EEPROM.write(EEPROM_MQTT_SERVER_ADDR + i, config.server[i]);
+    for (int i=0; i<32; i++) EEPROM.write(EEPROM_MQTT_SERVER_ADDR + i, i < (int)strlen(config.server) ? config.server[i] : 0);
     EEPROM.write(EEPROM_MQTT_PORT_ADDR, (config.port >> 8) & 0xFF);
     EEPROM.write(EEPROM_MQTT_PORT_ADDR + 1, config.port & 0xFF);
-    for (int i=0; i<32; i++) EEPROM.write(EEPROM_MQTT_USER_ADDR + i, config.username[i]);
-    for (int i=0; i<32; i++) EEPROM.write(EEPROM_MQTT_PASS_ADDR + i, config.password[i]);
-    
-    EEPROM.commit();
+    for (int i=0; i<20; i++) EEPROM.write(EEPROM_MQTT_USER_ADDR + i, i < (int)strlen(config.username) ? config.username[i] : 0);
+    for (int i=0; i<20; i++) EEPROM.write(EEPROM_MQTT_PASS_ADDR + i, i < (int)strlen(config.password) ? config.password[i] : 0);
+
+    GPIOManager::requestEEPROMCommit();  // 延迟提交，由主循环统一调度
     Serial.println("[MQTT] Config saved.");
     
     client_.disconnect();

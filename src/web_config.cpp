@@ -193,7 +193,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="grid-item"><div class="val" id="mP">--</div><div class="lbl">功率(W)</div></div>
 <div class="grid-item"><div class="val" id="mE">--</div><div class="lbl">用电量(kWh)</div></div>
 </div>
-<button class="btn" onclick="showMeterMore()" style="margin-top:10px">更多配置</button>
 </div>
 
 <div class="card" data-card="history">
@@ -208,6 +207,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="bar-wrap"><div class="bar-val" id="hv6" style="color:#007aff;font-weight:600"></div><div class="bar bar-today" id="hb6" style="height:2px"></div><div class="bar-label" id="hl6" style="color:#007aff;font-weight:600">今天</div></div>
 </div>
 <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:#8e8e93"><span>单位: kWh</span><span id="histTotal">合计: --</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid #e5e5ea;font-size:13px">
+  <span style="flex:1;text-align:left"><span style="color:#8e8e93;display:block;font-size:11px">当前电量</span><span id="histCurrentEnergy" style="color:#007aff;font-weight:600">--</span></span>
+  <span style="flex:1;text-align:center"><span style="color:#8e8e93;display:block;font-size:11px">本月用电</span><span id="histMonthEnergy" style="color:#34c759;font-weight:600">--</span></span>
+  <span style="flex:1;text-align:right"><span style="color:#8e8e93;display:block;font-size:11px">上月用电</span><span id="histLastMonth" style="color:#8e8e93;font-weight:600">--</span></span>
+</div>
 </div>
 
 <div class="card" data-card="wifi">
@@ -329,33 +333,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 </div>
 
-<div id="meterMoreM" class="modal modal-layer-1" style="display:none">
-<div class="modal-content">
-<div class="modal-title">电表更多配置</div>
-<p style="font-size:11px;color:#8e8e93;margin:4px 0 12px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
-<div style="margin-bottom:12px">
-<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电压校准（实测 V）</div>
-<div style="display:flex;gap:8px;align-items:center">
-<input type="number" id="calibV" class="input-field" placeholder="220.0" step="0.1" min="1" max="300" style="flex:1;width:auto;margin:0">
-<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibV()">校准</button>
-</div>
-</div>
-<div style="margin-bottom:12px">
-<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电流校准（实测 A）</div>
-<div style="display:flex;gap:8px;align-items:center">
-<input type="number" id="calibI" class="input-field" placeholder="4.545" step="0.001" min="0.001" max="100" style="flex:1;width:auto;margin:0">
-<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibI()">校准</button>
-</div>
-</div>
-<div style="border-top:1px solid #e5e5ea;margin:12px 0;padding-top:12px">
-<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doResetCalib()">恢复出厂校准</button>
-<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doSaveCalib()">保存校准到 Flash</button>
-<button class="btn btn-ghost" style="width:100%;margin:0" onclick="doClearEnergy()">清零电能计数器</button>
-</div>
-<button class="btn btn-ghost" style="width:100%;margin:8px 0 0 0" onclick="closeMeterMore()">关闭</button>
-</div>
-</div>
-
 <div id="otaM" class="modal modal-layer-1" style="display:none">
 <div class="modal-content">
 <div class="modal-title">固件升级</div>
@@ -387,12 +364,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 
 <div class="card">
-<div class="card-title">拔除断电设置</div>
-<div style="display:flex;align-items:center;gap:12px;padding:8px 0">
-  <span style="font-size:14px">功率阈值:</span>
-  <input type="number" id="pwrThresh" class="input-field" style="width:80px;margin:0;padding:8px" step="0.1" min="0.1" max="1" value="0.5">
-  <span style="font-size:14px">W</span>
-  <button class="timer-btn" style="width:auto;margin:0;padding:0 12px;height:32px;font-size:13px" onclick="savePowerOff()">保存</button>
+<div class="card-title">电量检测卡片</div>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 12px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
+<div style="margin-bottom:12px">
+<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电压校准（实测 V）</div>
+<div style="display:flex;gap:8px;align-items:center">
+<input type="number" id="calibV" class="input-field" placeholder="220.0" step="0.1" min="1" max="300" style="flex:1;width:auto;margin:0">
+<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibV()">校准</button>
+</div>
+</div>
+<div style="margin-bottom:12px">
+<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电流校准（实测 A）</div>
+<div style="display:flex;gap:8px;align-items:center">
+<input type="number" id="calibI" class="input-field" placeholder="4.545" step="0.001" min="0.001" max="100" style="flex:1;width:auto;margin:0">
+<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibI()">校准</button>
+</div>
+</div>
+<div style="border-top:1px solid #e5e5ea;margin:12px 0;padding-top:12px">
+<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doResetCalib()">恢复出厂校准</button>
+<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doSaveCalib()">保存校准到 Flash</button>
+<button class="btn btn-ghost" style="width:100%;margin:0" onclick="doClearEnergy()">清零电能计数器</button>
 </div>
 </div>
 
@@ -442,7 +433,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 
 <div class="card">
 <div class="card-title">功耗优化</div>
-<div class="info-row" style="margin-bottom:10px">
+<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #e5e5ea">
+  <span style="font-size:14px">拔断阈值:</span>
+  <input type="number" id="pwrThresh" class="input-field" style="width:80px;margin:0;padding:8px" step="0.1" min="0.1" max="1" value="0.5">
+  <span style="font-size:14px">W</span>
+  <button class="timer-btn" style="width:auto;margin:0 0 0 auto;padding:0 12px;height:32px;font-size:13px" onclick="savePowerOff()">保存</button>
+</div>
+<div class="info-row" style="margin-top:12px;margin-bottom:10px">
   <span class="lbl">STA 连接后自动关闭 AP</span>
   <div class="toggle" id="autoCloseAPToggle" onclick="toggleAutoCloseAP()"></div>
 </div>
@@ -499,30 +496,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
   <span class="lbl">已用时长</span>
   <span id="billingUsedTime" style="color:#34c759;font-weight:600">--</span>
 </div>
-</div>
-
-<div class="card">
-<div class="card-title">电费计算</div>
-<div style="display:flex;align-items:center;gap:12px;padding:8px 0">
+<div style="display:flex;align-items:center;gap:12px;padding:12px 0 0;border-top:1px solid #e5e5ea;margin-top:12px">
   <span style="font-size:14px">电价:</span>
   <input type="number" id="energyPrice" class="input-field" style="width:80px;margin:0;padding:8px" step="0.01" min="0.1" max="2" value="0.6">
   <span style="font-size:14px">元/度</span>
-  <button class="timer-btn" style="width:auto;margin:0;padding:0 12px;height:32px;font-size:13px" onclick="savePrice()">保存</button>
-</div>
-<div class="info-row" style="margin-top:8px">
-  <span class="lbl">当前电费</span>
-  <span id="currentCost" style="color:#ff9500;font-weight:600">--</span>
-</div>
-<div class="info-row" style="margin-top:8px">
-  <span class="lbl">本月用电</span>
-  <span id="monthEnergy" style="color:#34c759;font-weight:600">--</span>
-</div>
-<div class="info-row" style="margin-top:8px">
-  <span class="lbl">上月用电</span>
-  <span id="lastMonthEnergy" style="color:#8e8e93;font-weight:600">--</span>
-</div>
-<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e5ea">
-  <button class="timer-btn" style="width:100%;background:#ff3b30;color:#fff" onclick="resetEnergyHistory()">清零历史电量和电费记录</button>
+  <button class="timer-btn" style="width:auto;margin:0 0 0 auto;padding:0 12px;height:32px;font-size:13px" onclick="savePrice()">保存</button>
 </div>
 </div>
 
@@ -550,6 +528,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
     <button class="btn" id="otaBtn">固件升级</button>
     <button class="btn btn-ghost" id="restartBtn" onclick="confirmRestart()">重启设备</button>
   </div>
+  <button class="timer-btn" style="width:100%;background:#ff3b30;color:#fff;margin-top:10px" onclick="resetEnergyHistory()">清零历史电量和电费记录</button>
   <button class="btn btn-ghost" id="resetBtn" onclick="confirmReset()" style="margin-top:10px;width:100%">恢复出厂</button>
 </div>
 </div>
@@ -628,7 +607,16 @@ function closeModal(id){
 }
 
 function update(){
+  var _fetched=false;
+  var _to=setTimeout(function(){
+    if(_fetched)return;
+    console.log('[update] fetch /api/status timeout (5s), retrying');
+    var lo=document.getElementById('loadingOverlay');
+    if(lo)lo.classList.add('hide');
+    scheduleUpdate();
+  },5000);
   fetch('/api/status').then(function(r){return r.json()}).then(function(d){
+    _fetched=true;clearTimeout(_to);
     try{
     if(d.cv !== undefined && d.cv !== cardVisibility){
       cardVisibility=d.cv;
@@ -749,20 +737,14 @@ function update(){
     if(bum && d.bum !== undefined) bum.textContent='¥'+d.bum.toFixed(2);
     var but=document.getElementById('billingUsedTime');
     if(but && d.but !== undefined) but.textContent=d.but+'分钟';
-    var bcost=document.getElementById('currentCost');
-    if(bcost){
-      var price=d.ep||parseFloat(document.getElementById('energyPrice')?.value)||0.6;
-      if(d.ep !== undefined) document.getElementById('energyPrice').value=d.ep;
-      if(d.bu !== undefined){
-        bcost.textContent='¥'+(d.bu*price).toFixed(2);
-      }else{
-        bcost.textContent='--';
-      }
-    }
-    var me=document.getElementById('monthEnergy');
-    if(me) me.textContent=d.mo!==undefined?d.mo.toFixed(2)+'度':'--';
-    var lme=document.getElementById('lastMonthEnergy');
-    if(lme) lme.textContent=d.lm!==undefined?d.lm.toFixed(2)+'度':'--';
+    if(d.ep !== undefined){var epEl=document.getElementById('energyPrice'); if(epEl) epEl.value=d.ep;}
+    // 用电历史卡片底部三数据项
+    var hce=document.getElementById('histCurrentEnergy');
+    if(hce) hce.textContent=d.e!==undefined?(d.e/1000).toFixed(2)+'度':'--';
+    var hme=document.getElementById('histMonthEnergy');
+    if(hme) hme.textContent=d.mo!==undefined?d.mo.toFixed(2)+'度':'--';
+    var hlm=document.getElementById('histLastMonth');
+    if(hlm) hlm.textContent=d.lm!==undefined?d.lm.toFixed(2)+'度':'--';
 
     // WiFi 检测状态
     var wdt=document.getElementById('wifiDetectToggle');
@@ -868,6 +850,7 @@ function update(){
     updateCrashLog();
     scheduleUpdate();
   }).catch(function(e){console.log('Status fetch error:',e);
+    _fetched=true;clearTimeout(_to);
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
     updateLog();
@@ -1428,12 +1411,6 @@ function closeWifiDetectMore(){
 }
 
 // ============= 电表校准 =============
-function showMeterMore(){
-  document.getElementById('meterMoreM').style.display='flex';
-}
-function closeMeterMore(){
-  document.getElementById('meterMoreM').style.display='none';
-}
 function _calibBusy(btn){
   if(btn){btn.disabled=true;btn.textContent='处理中...';}
 }
@@ -1891,7 +1868,11 @@ document.addEventListener('DOMContentLoaded',function(){
   setTimeout(function(){updateChipTime();},3000);
   setTimeout(function(){
     var lo=document.getElementById('loadingOverlay');
-    if(lo && !lo.classList.contains('hide')) lo.classList.add('hide');
+    if(lo && !lo.classList.contains('hide')){
+      console.log('[boot] loading overlay force-hidden after 3s, kick-starting update loop');
+      lo.classList.add('hide');
+      scheduleUpdate();
+    }
   },3000);
 });
 var _updateTimer=null;
@@ -1958,6 +1939,31 @@ void WebConfigServer::init() {
         html += "请打开 <a href='" + portalUrl + "'>配置页面</a>";
         html += "</p></body></html>";
         server_->send(200, "text/html; charset=UTF-8", html);
+    });
+
+    // Android Captive Portal 检测：期望 204，返回 302 让 Android 判定为门户并弹窗
+    // 覆盖 clients3.google.com / connectivitycheck.gstatic.com 等变体的探测路径
+    server_->on("/generate_204", HTTP_GET, []() {
+        String portalUrl = String("http://") + WiFi.softAPIP().toString() + "/";
+        server_->sendHeader("Location", portalUrl, true);
+        server_->send(302, "text/plain", "");
+    });
+    server_->on("/gen_204", HTTP_GET, []() {
+        String portalUrl = String("http://") + WiFi.softAPIP().toString() + "/";
+        server_->sendHeader("Location", portalUrl, true);
+        server_->send(302, "text/plain", "");
+    });
+
+    // Windows Captive Portal 检测：msftconnecttest.com/connecttest.txt 与 /redirect
+    server_->on("/connecttest.txt", HTTP_GET, []() {
+        String portalUrl = String("http://") + WiFi.softAPIP().toString() + "/";
+        server_->sendHeader("Location", portalUrl, true);
+        server_->send(302, "text/plain", "");
+    });
+    server_->on("/redirect", HTTP_GET, []() {
+        String portalUrl = String("http://") + WiFi.softAPIP().toString() + "/";
+        server_->sendHeader("Location", portalUrl, true);
+        server_->send(302, "text/plain", "");
     });
 
     server_->on("/api/status", HTTP_GET, []() {
@@ -2846,6 +2852,7 @@ void WebConfigServer::handle() {
             dnsServer_->processNextRequest();
         }
     }
+    WiFiManager::updateMDNS();  // Web 请求前让 mDNS 有机会响应查询
     // P0: 标记 Web 请求处理中，主循环检测到此标志时跳过 SY7T609 读取等阻塞操作
     // 50ms 超时保护（在 isWebRequestActive 中实现）防止死锁
     markWebRequestStart();
@@ -2853,6 +2860,7 @@ void WebConfigServer::handle() {
         server_->handleClient();
     }
     markWebRequestEnd();
+    WiFiManager::updateMDNS();  // Web 请求后再次响应，避免长请求期间 mDNS 查询超时
 }
 
 void WebConfigServer::setSaveCallback(void (*callback)(const char*, const char*)) {
