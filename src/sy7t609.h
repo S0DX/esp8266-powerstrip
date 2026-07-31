@@ -17,15 +17,25 @@ public:
     static float getPowerFactor();
     static float getFrequency();
     static float getTemperature();
-    static float getEnergy();
 
-    static void resetEnergy();
     static void setEnabled(bool enabled);
     static bool isEnabled();
     static bool isFlashMode();
     static void loadFromEEPROM();
     static void saveToEEPROM();
-    
+
+    // -------- 校准功能（P1） --------
+    // 重置校准：把原厂默认校准常量写回芯片并保存到 flash
+    static bool resetCalibration();
+    // 电压自动校准：参数为万用表实测电压（V，如 220.0）
+    static bool calibrateVoltage(float realV);
+    // 电流自动校准：参数为万用表实测电流（A，如 4.545）
+    static bool calibrateCurrent(float realA);
+    // 保存当前寄存器到芯片 flash（校准后必须调用）
+    static bool saveCalibration();
+    // 清零电能计数器（EPPCNT）
+    static bool clearEnergyCounter();
+
     // Debug info for Web UI
     static String getDebugLog();
     static void clearDebugLog();
@@ -43,14 +53,11 @@ private:
     static float power_factor_;
     static float frequency_;
     static float temperature_;
-    static float energy_;
     static unsigned long last_read_;
-    static bool auto_report_;
     static unsigned long last_init_attempt_;
     static int init_retry_count_;
     static String debug_log_;
     static int debug_log_count_;
-    static uint8_t read_state_;
 
     static float voltage_scale_;
     static float current_scale_;
@@ -63,8 +70,35 @@ private:
     static bool canUseSerial();
     static uint8_t calculateChecksum(const uint8_t* data, size_t size);
     static bool sendCommand(uint16_t addr, uint32_t value);
-    static bool readRegister(uint16_t addr, uint32_t* value);
+    static bool readRegister(uint16_t addr, uint32_t* value);  // 同步阻塞，仅供 setup/校准使用
     static bool initializeSY7T609();
+
+    // P3: 非阻塞状态机（仅供 handle() 使用，彻底消除 100ms 主循环阻塞）
+    enum ReadFSMState { FSM_IDLE, FSM_WAITING };
+    static ReadFSMState fsm_state_;
+    static uint16_t    fsm_addr_;        // 当前读取的寄存器地址
+    static uint32_t    fsm_value_;       // 读取结果暂存
+    static uint8_t     fsm_retry_;       // 当前重试次数（0..2）
+    static unsigned long fsm_start_;     // WAITING 起始时间戳
+    static void startReadFSM(uint16_t addr);
+    static bool pollReadFSM();           // true=本次 FSM 结束(成功或放弃), false=继续等待
+    static void commitReadResult(bool ok);
+    static void advanceItem();
+
+    // P2: 表驱动测量项定义
+    // 解析类型：SIGNED_MILLI=24bit有符号/1000（PF/POWER/VAR）
+    //         UNSIGNED_DIV=无符号/scale（VRMS/IRMS/FREQ/CTEMP）
+    //         NONE=不解析（占位/已废弃的 EPPCNT）
+    enum ParseType { PARSE_SIGNED_MILLI, PARSE_UNSIGNED_DIV, PARSE_NONE };
+    struct MeasurementItem {
+        uint16_t addr;
+        float* target;
+        float scale;
+        ParseType parse;
+    };
+    static MeasurementItem items_[];
+    static uint8_t current_item_;
+    static const uint8_t ITEM_COUNT_;
 };
 
 #endif
