@@ -1,8 +1,38 @@
-# 智能插排固件 (Smart Power Strip Firmware) v5.0
+<div align="center">
 
-基于 ESP8266 (ESP-12E/F) 的智能插排固件，支持远程控制、电能监测、定时/倒计时功能、mDNS 局域网域名、UDP 设备发现、Captive Portal 跨平台门户弹出。
+# 🔌 智能插排固件
 
-## 界面预览
+### ESP8266 Smart Power Strip Firmware · v5.0
+
+<img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
+
+**基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
+
+[![Version](https://img.shields.io/badge/version-5.0-007aff?style=flat-square)](#)
+[![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
+[![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-ff69b4?style=flat-square)](#)
+
+</div>
+
+---
+
+## 🌟 项目亮点
+
+| 亮点 | 说明 |
+|------|------|
+| ⚡ **零阻塞状态机** | SY7T609 电能芯片读取采用状态机驱动，主循环永不阻塞（v5.0 重构） |
+| 📱 **跨平台门户** | Captive Portal 支持 iOS / Android / Windows / macOS 自动弹窗 |
+| 👋 **人来上电** | 检测指定 WiFi 设备信号自动通电，离开自动断电 |
+| 💰 **计费供电** | 按电量/金额/时长三种模式，内置电价设置 |
+| 📊 **电能可视化** | 实时 V/A/W/PF + 7 日柱状图 + 月度对比 |
+| 🔄 **OTA 升级** | 支持 Arduino OTA / Web OTA 双通道，无需 USB |
+| 🏠 **mDNS 域名** | 局域网 `power.local` 直达，免记 IP |
+
+---
+
+## 🖼️ 界面预览
 
 | 主页控制 | 更多设置 |
 | :---: | :---: |

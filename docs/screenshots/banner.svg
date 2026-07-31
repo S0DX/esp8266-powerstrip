@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="1" stop-color="#0056b3"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f2f2f7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dx="0" dy="4"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.25"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="320" fill="url(#bg)"/>
+
+  <!-- Subtle dot pattern -->
+  <g fill="#ffffff" opacity="0.06">
+    <circle cx="100" cy="50" r="2"/>
+    <circle cx="200" cy="80" r="2"/>
+    <circle cx="300" cy="40" r="2"/>
+    <circle cx="1100" cy="60" r="2"/>
+    <circle cx="1200" cy="100" r="2"/>
+    <circle cx="1150" cy="270" r="2"/>
+    <circle cx="80" cy="280" r="2"/>
+    <circle cx="180" cy="250" r="2"/>
+  </g>
+
+  <!-- Left: Phone mockup with app UI -->
+  <g transform="translate(80,40)" filter="url(#shadow)">
+    <rect x="0" y="0" width="160" height="240" rx="20" fill="#1c1c1e"/>
+    <rect x="6" y="6" width="148" height="228" rx="16" fill="#f2f2f7"/>
+    <!-- Status bar -->
+    <text x="20" y="28" font-size="9" font-weight="600" fill="#1c1c1e">9:41</text>
+    <text x="138" y="28" font-size="9" font-weight="600" fill="#1c1c1e" text-anchor="end">100%</text>
+    <!-- Title -->
+    <text x="80" y="50" font-size="11" font-weight="600" fill="#1c1c1e" text-anchor="middle">智能插排</text>
+    <!-- Voltage/Current grid -->
+    <rect x="14" y="60" width="64" height="36" rx="6" fill="#fff"/>
+    <text x="46" y="78" font-size="13" font-weight="600" fill="#007aff" text-anchor="middle">220.5</text>
+    <text x="46" y="90" font-size="6" fill="#8e8e93" text-anchor="middle">电压 V</text>
+    <rect x="82" y="60" width="64" height="36" rx="6" fill="#fff"/>
+    <text x="114" y="78" font-size="13" font-weight="600" fill="#007aff" text-anchor="middle">0.32</text>
+    <text x="114" y="90" font-size="6" fill="#8e8e93" text-anchor="middle">电流 A</text>
+    <rect x="14" y="100" width="64" height="36" rx="6" fill="#fff"/>
+    <text x="46" y="118" font-size="13" font-weight="600" fill="#007aff" text-anchor="middle">70.6</text>
+    <text x="46" y="130" font-size="6" fill="#8e8e93" text-anchor="middle">功率 W</text>
+    <rect x="82" y="100" width="64" height="36" rx="6" fill="#fff"/>
+    <text x="114" y="118" font-size="13" font-weight="600" fill="#007aff" text-anchor="middle">12.45</text>
+    <text x="114" y="130" font-size="6" fill="#8e8e93" text-anchor="middle">kWh</text>
+    <!-- Bar chart -->
+    <rect x="14" y="144" width="132" height="40" rx="6" fill="#fff"/>
+    <g transform="translate(22,150)">
+      <rect x="0" y="20" width="12" height="12" rx="1" fill="#30d158"/>
+      <rect x="18" y="14" width="12" height="18" rx="1" fill="#30d158"/>
+      <rect x="36" y="6" width="12" height="26" rx="1" fill="#30d158"/>
+      <rect x="54" y="16" width="12" height="16" rx="1" fill="#30d158"/>
+      <rect x="72" y="10" width="12" height="22" rx="1" fill="#30d158"/>
+      <rect x="90" y="18" width="12" height="14" rx="1" fill="#30d158"/>
+      <rect x="108" y="2" width="12" height="30" rx="1" fill="#007aff"/>
+    </g>
+    <!-- Relay toggle -->
+    <rect x="14" y="190" width="64" height="32" rx="16" fill="#34c759"/>
+    <circle cx="70" cy="206" r="11" fill="#fff"/>
+    <text x="46" y="226" font-size="6" fill="#8e8e93" text-anchor="middle">主继电器</text>
+    <rect x="82" y="190" width="64" height="32" rx="16" fill="#34c759"/>
+    <circle cx="138" cy="206" r="11" fill="#fff"/>
+    <text x="114" y="226" font-size="6" fill="#8e8e93" text-anchor="middle">从继电器</text>
+  </g>
+
+  <!-- Center: Title and tagline -->
+  <g transform="translate(560,80)">
+    <text x="0" y="0" font-size="56" font-weight="700" fill="#fff">ESP8266</text>
+    <text x="0" y="56" font-size="56" font-weight="700" fill="#fff">PowerStrip</text>
+    <text x="0" y="100" font-size="20" font-weight="500" fill="#ffffff" opacity="0.85">智能插排固件 · v5.0</text>
+    <line x1="0" y1="120" x2="120" y2="120" stroke="#fff" stroke-width="3"/>
+    <text x="0" y="150" font-size="14" fill="#ffffff" opacity="0.75">远程控制 · 电能计量 · 人来上电</text>
+    <text x="0" y="172" font-size="14" fill="#ffffff" opacity="0.75">计费供电 · Captive Portal · OTA</text>
+  </g>
+
+  <!-- Right: Feature chips -->
+  <g transform="translate(960,60)" font-size="13" font-weight="600">
+    <rect x="0" y="0" width="220" height="36" rx="18" fill="#ffffff" opacity="0.15"/>
+    <text x="20" y="23" fill="#fff">⚡ 零阻塞状态机</text>
+
+    <rect x="0" y="48" width="220" height="36" rx="18" fill="#ffffff" opacity="0.15"/>
+    <text x="20" y="71" fill="#fff">📱 跨平台 Captive Portal</text>
+
+    <rect x="0" y="96" width="220" height="36" rx="18" fill="#ffffff" opacity="0.15"/>
+    <text x="20" y="119" fill="#fff">👋 人来上电检测</text>
+
+    <rect x="0" y="144" width="220" height="36" rx="18" fill="#ffffff" opacity="0.15"/>
+    <text x="20" y="167" fill="#fff">💰 计费供电三模式</text>
+
+    <rect x="0" y="192" width="220" height="36" rx="18" fill="#ffffff" opacity="0.15"/>
+    <text x="20" y="215" fill="#fff">🔄 OTA 双通道升级</text>
+  </g>
+
+  <!-- Bottom badges -->
+  <g transform="translate(560,260)" font-size="12" font-weight="600">
+    <rect x="0" y="0" width="80" height="24" rx="12" fill="#fff"/>
+    <text x="40" y="16" fill="#007aff" text-anchor="middle">C++</text>
+
+    <rect x="90" y="0" width="80" height="24" rx="12" fill="#fff"/>
+    <text x="130" y="16" fill="#007aff" text-anchor="middle">ESP8266</text>
+
+    <rect x="180" y="0" width="80" height="24" rx="12" fill="#fff"/>
+    <text x="220" y="16" fill="#007aff" text-anchor="middle">IoT</text>
+
+    <rect x="270" y="0" width="80" height="24" rx="12" fill="#fff"/>
+    <text x="310" y="16" fill="#007aff" text-anchor="middle">MQTT</text>
+
+    <rect x="360" y="0" width="80" height="24" rx="12" fill="#fff"/>
+    <text x="400" y="16" fill="#007aff" text-anchor="middle">SY7T609</text>
+  </g>
+</svg>
