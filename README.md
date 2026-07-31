@@ -2,6 +2,18 @@
 
 基于 ESP8266 (ESP-12E/F) 的智能插排固件，支持远程控制、电能监测、定时/倒计时功能、mDNS 局域网域名、UDP 设备发现、Captive Portal 跨平台门户弹出。
 
+## 界面预览
+
+| 主页控制 | 更多设置 |
+| :---: | :---: |
+| ![主页](docs/screenshots/main-page.svg) | ![更多设置](docs/screenshots/more-settings.svg) |
+| 继电器控制 / 实时电量 / 用电历史 | 卡片排序 / 功耗优化 / 计费供电 / 电量校准 |
+
+| 人来上电配置 | Captive Portal 跨平台门户 |
+| :---: | :---: |
+| ![人来上电](docs/screenshots/wifi-detect.svg) | ![Captive Portal](docs/screenshots/captive-portal.svg) |
+| 目标选择 / 高级参数 / 工作机制 | iOS / Android / Windows / macOS 自动弹窗 |
+
 ## 功能特性
 
 ### 继电器控制

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 720" font-family="-apple-system,BlinkMacSystemFont,sans-serif">
+  <rect width="400" height="720" fill="#f2f2f7"/>
+  <!-- 顶栏 -->
+  <rect x="0" y="0" width="400" height="56" fill="rgba(255,255,255,0.9)"/>
+  <line x1="0" y1="56" x2="400" y2="56" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="20" y="36" font-size="18" font-weight="600" fill="#1c1c1e">智能插排</text>
+  <text x="370" y="36" font-size="13" fill="#8e8e93" text-anchor="end">16:42</text>
+  <!-- 继电器控制卡片 -->
+  <rect x="16" y="72" width="368" height="140" rx="12" fill="#fff"/>
+  <text x="32" y="96" font-size="11" fill="#8e8e93" letter-spacing="0.5">继电器控制</text>
+  <!-- 从继电器 -->
+  <rect x="32" y="108" width="160" height="80" rx="14" fill="#f2f2f7"/>
+  <text x="112" y="132" font-size="13" font-weight="500" text-anchor="middle">从继电器</text>
+  <text x="112" y="148" font-size="10" fill="#8e8e93" text-anchor="middle">可控端</text>
+  <rect x="76" y="156" width="72" height="24" rx="12" fill="#34c759"/>
+  <circle cx="136" cy="168" r="9" fill="#fff"/>
+  <!-- 主继电器 -->
+  <rect x="208" y="108" width="160" height="80" rx="14" fill="#f2f2f7"/>
+  <text x="288" y="132" font-size="13" font-weight="500" text-anchor="middle">主继电器</text>
+  <text x="288" y="148" font-size="10" fill="#8e8e93" text-anchor="middle">常通端</text>
+  <rect x="252" y="156" width="72" height="24" rx="12" fill="#34c759"/>
+  <circle cx="312" cy="168" r="9" fill="#fff"/>
+  <!-- 实时电量卡片 -->
+  <rect x="16" y="224" width="368" height="160" rx="12" fill="#fff"/>
+  <text x="32" y="248" font-size="11" fill="#8e8e93" letter-spacing="0.5">实时电量</text>
+  <rect x="360" y="236" width="40" height="24" rx="12" fill="#34c759"/>
+  <circle cx="389" cy="248" r="9" fill="#fff"/>
+  <!-- 4个指标 -->
+  <rect x="32" y="264" width="160" height="50" rx="10" fill="#f2f2f7"/>
+  <text x="112" y="290" font-size="20" font-weight="600" fill="#007aff" text-anchor="middle">220.5</text>
+  <text x="112" y="306" font-size="9" fill="#8e8e93" text-anchor="middle">电压(V)</text>
+  <rect x="208" y="264" width="160" height="50" rx="10" fill="#f2f2f7"/>
+  <text x="288" y="290" font-size="20" font-weight="600" fill="#007aff" text-anchor="middle">0.32</text>
+  <text x="288" y="306" font-size="9" fill="#8e8e93" text-anchor="middle">电流(A)</text>
+  <rect x="32" y="320" width="160" height="50" rx="10" fill="#f2f2f7"/>
+  <text x="112" y="346" font-size="20" font-weight="600" fill="#007aff" text-anchor="middle">70.6</text>
+  <text x="112" y="362" font-size="9" fill="#8e8e93" text-anchor="middle">功率(W)</text>
+  <rect x="208" y="320" width="160" height="50" rx="10" fill="#f2f2f7"/>
+  <text x="288" y="346" font-size="20" font-weight="600" fill="#007aff" text-anchor="middle">12.45</text>
+  <text x="288" y="362" font-size="9" fill="#8e8e93" text-anchor="middle">用电量(kWh)</text>
+  <!-- 用电历史卡片 -->
+  <rect x="16" y="396" width="368" height="180" rx="12" fill="#fff"/>
+  <text x="32" y="420" font-size="11" fill="#8e8e93" letter-spacing="0.5">用电历史</text>
+  <text x="180" y="420" font-size="10" fill="#c7c7cc">过去 7 天</text>
+  <!-- 柱状图 -->
+  <g transform="translate(32,440)">
+    <rect x="0" y="60" width="40" height="40" rx="2" fill="#30d158"/>
+    <rect x="50" y="40" width="40" height="60" rx="2" fill="#30d158"/>
+    <rect x="100" y="20" width="40" height="80" rx="2" fill="#30d158"/>
+    <rect x="150" y="50" width="40" height="50" rx="2" fill="#30d158"/>
+    <rect x="200" y="30" width="40" height="70" rx="2" fill="#30d158"/>
+    <rect x="250" y="55" width="40" height="45" rx="2" fill="#30d158"/>
+    <rect x="300" y="10" width="40" height="90" rx="2" fill="#007aff"/>
+    <text x="20" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周一</text>
+    <text x="70" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周二</text>
+    <text x="120" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周三</text>
+    <text x="170" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周四</text>
+    <text x="220" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周五</text>
+    <text x="270" y="115" font-size="9" fill="#8e8e93" text-anchor="middle">周六</text>
+    <text x="320" y="115" font-size="9" fill="#007aff" font-weight="600" text-anchor="middle">今天</text>
+  </g>
+  <line x1="32" y1="560" x2="368" y2="560" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="572" font-size="10" fill="#8e8e93" font-weight="500">当前电量</text>
+  <text x="200" y="572" font-size="10" fill="#8e8e93" font-weight="500" text-anchor="middle">本月用电</text>
+  <text x="368" y="572" font-size="10" fill="#8e8e93" font-weight="500" text-anchor="end">上月用电</text>
+  <text x="32" y="572" font-size="0" fill="none"></text>
+  <!-- WiFi 状态卡片 -->
+  <rect x="16" y="588" width="368" height="100" rx="12" fill="#fff"/>
+  <text x="32" y="612" font-size="11" fill="#8e8e93" letter-spacing="0.5">WiFi 状态</text>
+  <text x="32" y="636" font-size="13" fill="#8e8e93">连接状态</text>
+  <text x="368" y="636" font-size="13" font-weight="500" fill="#34c759" text-anchor="end">已连接</text>
+  <line x1="32" y1="648" x2="368" y2="648" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="668" font-size="13" fill="#8e8e93">设备 IP</text>
+  <text x="368" y="668" font-size="13" font-weight="500" fill="#007aff" text-anchor="end">192.168.1.42</text>
+</svg>
