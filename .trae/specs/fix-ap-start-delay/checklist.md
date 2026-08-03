@@ -1,5 +1,0 @@
-- [x] AP 启动后 Web 页面 1 秒内可访问
-- [x] init() 中无 WiFi.begin() 调用
-- [x] 添加了 sta_connect_pending_ 标志
-- [x] handle() 中处理非阻塞 STA 连接
-- [x] 编译通过 (pio run -e esp12e)
