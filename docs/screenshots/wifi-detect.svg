@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 720" font-family="-apple-system,BlinkMacSystemFont,sans-serif">
+  <rect width="400" height="720" fill="#f2f2f7"/>
+  <rect x="0" y="0" width="400" height="56" fill="rgba(255,255,255,0.9)"/>
+  <line x1="0" y1="56" x2="400" y2="56" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="20" y="36" font-size="18" font-weight="600" fill="#1c1c1e">人来上电</text>
+  <text x="370" y="36" font-size="13" fill="#007aff" text-anchor="end">‹ 返回</text>
+  <!-- 主卡片 -->
+  <rect x="16" y="72" width="368" height="240" rx="12" fill="#fff"/>
+  <text x="32" y="96" font-size="11" fill="#8e8e93" letter-spacing="0.5">人来上电</text>
+  <text x="32" y="120" font-size="11" fill="#8e8e93">检测指定WiFi信号自动开启继电器</text>
+  <line x1="32" y1="130" x2="368" y2="130" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="152" font-size="15">启用检测</text>
+  <rect x="340" y="140" width="36" height="22" rx="11" fill="#34c759"/>
+  <circle cx="368" cy="151" r="9" fill="#fff"/>
+  <line x1="32" y1="168" x2="368" y2="168" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="190" font-size="15" fill="#8e8e93">检测目标</text>
+  <text x="368" y="190" font-size="14" font-weight="600" fill="#007aff" text-anchor="end">iPhone-15</text>
+  <line x1="32" y1="204" x2="368" y2="204" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="226" font-size="15" fill="#8e8e93">MAC 地址</text>
+  <text x="368" y="226" font-size="11" fill="#8e8e93" text-anchor="end">A4:CF:12:34:56:78</text>
+  <line x1="32" y1="240" x2="368" y2="240" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="262" font-size="15" fill="#8e8e93">状态</text>
+  <text x="368" y="262" font-size="14" font-weight="600" fill="#34c759" text-anchor="end">● 检测到</text>
+  <line x1="32" y1="276" x2="368" y2="276" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="298" font-size="15" fill="#007aff" font-weight="500">更多配置</text>
+  <!-- 高级参数 -->
+  <rect x="16" y="324" width="368" height="280" rx="12" fill="#fff"/>
+  <text x="32" y="348" font-size="11" fill="#8e8e93" letter-spacing="0.5">高级配置</text>
+  <text x="32" y="372" font-size="14">RSSI 阈值</text>
+  <text x="368" y="372" font-size="13" fill="#8e8e93" text-anchor="end">-75 dBm</text>
+  <line x1="32" y1="386" x2="368" y2="386" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="406" font-size="14">扫描间隔（无目标）</text>
+  <text x="368" y="406" font-size="13" fill="#8e8e93" text-anchor="end">30 秒</text>
+  <line x1="32" y1="420" x2="368" y2="420" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="440" font-size="14">扫描间隔（已发现）</text>
+  <text x="368" y="440" font-size="13" fill="#007aff" font-weight="600" text-anchor="end">5 秒</text>
+  <line x1="32" y1="454" x2="368" y2="454" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="474" font-size="14">联锁倒计时</text>
+  <rect x="340" y="462" width="36" height="22" rx="11" fill="#e9e9eb"/>
+  <line x1="32" y1="488" x2="368" y2="488" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="508" font-size="14">仅开主继电器</text>
+  <rect x="340" y="496" width="36" height="22" rx="11" fill="#e9e9eb"/>
+  <line x1="32" y1="522" x2="368" y2="522" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="542" font-size="14">按键检测</text>
+  <rect x="340" y="530" width="36" height="22" rx="11" fill="#e9e9eb"/>
+  <line x1="32" y1="556" x2="368" y2="556" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="576" font-size="14">拔除阈值功率</text>
+  <text x="368" y="576" font-size="13" fill="#007aff" text-anchor="end">1 W</text>
+  <!-- 工作机制说明 -->
+  <rect x="16" y="616" width="368" height="80" rx="12" fill="#fff"/>
+  <text x="32" y="640" font-size="11" fill="#8e8e93" letter-spacing="0.5">工作机制</text>
+  <text x="32" y="660" font-size="10" fill="#8e8e93">扫描 → 发现 → 开继电器 → 高频确认 → 消失 → 倒计时 → 关闭</text>
+  <text x="32" y="680" font-size="10" fill="#34c759" font-weight="500">● 当前：目标在线，功率 70.6W</text>
+</svg>

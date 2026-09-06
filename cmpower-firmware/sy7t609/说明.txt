@@ -1,0 +1,4 @@
+
+sy7t609放到 一般 /homeassistant/esphome/components/
+
+esphome 要求 6.x>
