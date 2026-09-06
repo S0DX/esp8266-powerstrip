@@ -71,7 +71,28 @@ void WebConfigServer::init() {
         server_->sendHeader("Content-Encoding", "gzip");
         server_->setContentLength(sizeof(INDEX_HTML_GZ));
         server_->send(200, "text/html; charset=UTF-8", "");
-        server_->sendContent_P((const char*)INDEX_HTML_GZ, sizeof(INDEX_HTML_GZ));
+        // 分块可靠发送：WiFiClient::write 单次调用超过 5s 即短写，sendContent_P 对短写
+        // 只打日志不补救，页面尾部是 <script>，截断即整页假死（卡加载动画、数据为 "--"）。
+        // 此处按 write 返回值续传，每块拥有独立的超时窗口，弱信号下慢客户端也能收完。
+        {
+            const char* p = (const char*)INDEX_HTML_GZ;
+            const size_t total = sizeof(INDEX_HTML_GZ);
+            const uint32_t deadline = millis() + 30000;  // 总预算 30s，防止病态慢客户端拖死主循环
+            size_t sent = 0;
+            uint8_t failures = 0;
+            while (sent < total && failures < 3 && millis() < deadline) {
+                size_t chunk = total - sent > 1024 ? 1024 : total - sent;
+                size_t n = server_->client().write((const uint8_t*)p + sent, chunk);
+                if (n == 0) {
+                    if (++failures >= 3) break;  // 连续零写入：连接已死，放弃避免死循环
+                    delay(1);
+                    continue;
+                }
+                failures = 0;
+                sent += n;
+                yield();
+            }
+        }
         // 发送完成后让出 1ms，让 lwIP/TCP 栈有机会把数据真正推出去，
         // 避免在弱信号或慢客户端场景下因缓冲区未排空导致页面空白/截断。
         delay(1);
