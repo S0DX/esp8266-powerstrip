@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 560" font-family="-apple-system,BlinkMacSystemFont,sans-serif">
+  <rect width="400" height="560" fill="#f2f2f7"/>
+  <rect x="0" y="0" width="400" height="56" fill="rgba(255,255,255,0.9)"/>
+  <line x1="0" y1="56" x2="400" y2="56" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="20" y="36" font-size="18" font-weight="600" fill="#1c1c1e">更多设置</text>
+  <text x="370" y="36" font-size="13" fill="#007aff" text-anchor="end">‹ 返回</text>
+  <!-- 24小时循环卡片 -->
+  <rect x="16" y="72" width="368" height="440" rx="12" fill="#fff"/>
+  <text x="32" y="100" font-size="11" fill="#8e8e93" letter-spacing="0.5">24 小时时间段循环</text>
+  <!-- 运行状态 -->
+  <text x="32" y="128" font-size="13" fill="#8e8e93">运行状态</text>
+  <text x="368" y="128" font-size="13" font-weight="600" fill="#34c759" text-anchor="end">运行中 · 08:00-12:00</text>
+  <!-- 时间轴 -->
+  <rect x="32" y="152" width="336" height="48" rx="24" fill="#e9e9eb"/>
+  <!-- 跨天时段 00:00-06:00 -->
+  <rect x="34" y="158" width="80" height="36" rx="9" fill="#007aff"/>
+  <!-- 当日时段 08:00-12:00 -->
+  <rect x="146" y="158" width="52" height="36" rx="9" fill="#34c759"/>
+  <!-- 跨天时段 22:00-24:00 -->
+  <rect x="340" y="158" width="26" height="36" rx="9" fill="#007aff"/>
+  <!-- 拖拽手柄 -->
+  <rect x="144" y="160" width="4" height="32" rx="2" fill="#fff" opacity="0.95"/>
+  <rect x="196" y="160" width="4" height="32" rx="2" fill="#fff" opacity="0.95"/>
+  <rect x="338" y="160" width="4" height="32" rx="2" fill="#fff" opacity="0.95"/>
+  <rect x="364" y="160" width="4" height="32" rx="2" fill="#fff" opacity="0.95"/>
+  <!-- 当前时刻线 -->
+  <rect x="178" y="158" width="1.5" height="36" fill="#8e8e93" opacity="0.85"/>
+  <!-- 刻度 -->
+  <text x="32" y="216" font-size="9" fill="#c7c7cc">0点</text>
+  <text x="110" y="216" font-size="9" fill="#c7c7cc" text-anchor="middle">6点</text>
+  <text x="188" y="216" font-size="9" fill="#c7c7cc" text-anchor="middle">12点</text>
+  <text x="266" y="216" font-size="9" fill="#c7c7cc" text-anchor="middle">18点</text>
+  <text x="368" y="216" font-size="9" fill="#c7c7cc" text-anchor="end">24点</text>
+  <!-- 提示 -->
+  <text x="32" y="244" font-size="11" fill="#8e8e93">在空白处按住并拖动即可添加时段 · 拖动色块边缘调整 · 轻点色块编辑</text>
+  <text x="32" y="260" font-size="10" fill="#c7c7cc">结束早于开始表示跨午夜 · 需联网同步时间 · 最多 6 个时段</text>
+  <!-- 时段列表 -->
+  <circle cx="38" cy="290" r="5" fill="#34c759"/>
+  <text x="52" y="295" font-size="14" font-weight="500">08:00 – 12:00</text>
+  <text x="320" y="295" font-size="14" fill="#007aff">编辑</text>
+  <text x="360" y="295" font-size="14" fill="#ff3b30">删除</text>
+  <line x1="32" y1="312" x2="368" y2="312" stroke="#e5e5ea" stroke-width="0.5"/>
+  <circle cx="38" cy="340" r="5" fill="#007aff"/>
+  <text x="52" y="345" font-size="14" font-weight="500">22:00 – 06:00</text>
+  <rect x="160" y="331" width="52" height="19" rx="9.5" fill="rgba(0,122,255,0.1)"/>
+  <text x="186" y="344" font-size="10" fill="#007aff" text-anchor="middle">↕ 跨天</text>
+  <text x="320" y="345" font-size="14" fill="#007aff">编辑</text>
+  <text x="360" y="345" font-size="14" fill="#ff3b30">删除</text>
+  <line x1="32" y1="362" x2="368" y2="362" stroke="#e5e5ea" stroke-width="0.5"/>
+  <circle cx="38" cy="390" r="5" fill="#ff9500"/>
+  <text x="52" y="395" font-size="14" font-weight="500">14:30 – 18:00</text>
+  <text x="320" y="395" font-size="14" fill="#007aff">编辑</text>
+  <text x="360" y="395" font-size="14" fill="#ff3b30">删除</text>
+  <!-- 启用按钮（绿色=已启用，显示关闭循环） -->
+  <rect x="32" y="424" width="336" height="44" rx="10" fill="#34c759"/>
+  <text x="200" y="452" font-size="15" font-weight="600" fill="#fff" text-anchor="middle">关闭循环</text>
+  <!-- 拖动创建气泡示意 -->
+  <rect x="228" y="146" width="86" height="20" rx="6" fill="#1c1c1e"/>
+  <text x="271" y="160" font-size="11" font-weight="600" fill="#fff" text-anchor="middle">15:00 – 16:30</text>
+</svg>

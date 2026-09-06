@@ -2,13 +2,13 @@
 
 # 🔌 智能插排固件
 
-### ESP8266 Smart Power Strip Firmware · v5.1
+### ESP8266 Smart Power Strip Firmware · v5.2
 
 <img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
-[![Version](https://img.shields.io/badge/version-5.1-007aff?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-5.2-007aff?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
@@ -34,15 +34,20 @@
 
 ## 🖼️ 界面预览
 
-| 主页控制 | 更多设置 |
+| 主页控制 | 24 小时循环（v5.1 时间轴） |
 | :---: | :---: |
-| ![主页](docs/screenshots/main-page.svg) | ![更多设置](docs/screenshots/more-settings.svg) |
-| 继电器控制 / 实时电量 / 用电历史 | 卡片排序 / 功耗优化 / 计费供电 / 电量校准 |
+| ![主页](docs/screenshots/main-page.svg) | ![24小时循环](docs/screenshots/cycle-timeline.svg) |
+| 继电器控制 / 实时电量 / 用电历史 | 拖动创建 / 跨天反向 / 运行状态 |
 
-| 人来上电配置 | Captive Portal 跨平台门户 |
+| 更多设置 | 人来上电配置 |
 | :---: | :---: |
-| ![人来上电](docs/screenshots/wifi-detect.svg) | ![Captive Portal](docs/screenshots/captive-portal.svg) |
-| 目标选择 / 高级参数 / 工作机制 | iOS / Android / Windows / macOS 自动弹窗 |
+| ![更多设置](docs/screenshots/more-settings.svg) | ![人来上电](docs/screenshots/wifi-detect.svg) |
+| 功能卡片在前 / 维护卡片靠后 | 目标选择 / 高级参数 / 工作机制 |
+
+| Captive Portal 跨平台门户 |
+| :---: |
+| ![Captive Portal](docs/screenshots/captive-portal.svg) |
+| iOS / Android / Windows / macOS 自动弹窗 |
 
 ## 功能特性
 
@@ -75,7 +80,7 @@
 - **mDNS 域名**：默认 `power.local`，支持自定义
   - v5.0 可靠性提升：`MDNS.begin()` 失败重试 3 次，`MDNS.update()` 独立于 STA 状态调用，Web 请求间隙兜底响应
 - **Captive Portal**：跨平台门户弹出（v5.0 新增 Android `/generate_204`、Windows `/connecttest.txt` 探测端点）
-- **UDP 设备发现**：广播设备信息，便于 App 发现
+- **页面 gzip 交付**（v5.2）：Web 页面预压缩为 gzip，Flash 占用降低约 8%，AP 直连首屏加载提速 3-4 倍
 - **AP + STA 双模式**：配置时不断开连接
 - **Web OTA 升级**：支持网页上传固件升级
 - **加载动画超时保护**（v5.0）：fetch 5 秒超时 + 3 秒保底重试，避免页面卡在加载状态
@@ -373,22 +378,6 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 | `/api/reset` | POST | 恢复出厂 |
 | `/api/reset_energy` | POST | 清零电量记录 |
 
-## UDP 设备发现
-
-设备每 3 秒广播一次 JSON 数据到 `255.255.255.255:4210`：
-
-```json
-{
-  "name": "PowerStrip",
-  "ip": "192.168.1.100",
-  "mac": "A4:CF:12:34:56:78",
-  "ver": "5.0",
-  "hostname": "power"
-}
-```
-
-安卓 App 可监听此广播自动发现设备。
-
 ## 技术细节
 
 ### EEPROM 存储布局（v5.0）
@@ -438,6 +427,8 @@ esp8266-powerstrip/
 │   ├── gpio_mgr.cpp/h       # GPIO/继电器管理
 │   ├── button_mgr.cpp/h     # 按键处理
 │   ├── wifi_mgr.cpp/h       # WiFi 管理（含 mDNS）
+│   ├── index.html           # Web 页面源文件（可直接编辑）
+│   ├── index_html_gz.h      # 页面 gzip 数组（构建时自动生成，勿手改）
 │   ├── web_config.cpp/h     # Web 服务器（含 Captive Portal）
 │   ├── sy7t609.cpp/h        # 电能芯片驱动（状态机非阻塞读取）
 │   ├── sy7t609_def.h        # SY7T609 寄存器/校准常量定义
@@ -445,11 +436,15 @@ esp8266-powerstrip/
 │   ├── mqtt_mgr.cpp/h       # MQTT 客户端
 │   ├── ota_mgr.cpp/h        # OTA 升级
 │   └── log_buffer.cpp/h     # 日志缓冲
+├── scripts/                  # 构建辅助脚本
+│   └── gen_page_gz.py       # 预构建：index.html → index_html_gz.h
 ├── cmpower-firmware/        # ESPHome 集成与固件分析
 ├── cmpower原理图.svg        # 硬件原理图
 ├── platformio.ini           # PlatformIO 配置
 └── README.md                # 本文档
 ```
+
+> 修改 Web 页面：直接编辑 `src/index.html`，`pio run` 时预构建脚本自动重新生成 gzip 头文件，无需其他操作。
 
 ## 依赖库
 
@@ -463,6 +458,7 @@ MIT License
 
 ## 版本历史
 
+- **v5.2** - 页面 gzip 交付：Web 页面预压缩（104KB→23KB，Flash -8%），AP 直连首屏加载提速；文档与代码同步（移除未实现的 UDP 广播章节、新增 24h 时间轴截图、版本号修正）
 - **v5.1** - 24小时循环重构：可视化 24 小时时间轴（拖拽创建/调整、轻点编辑、跨午夜、一键反向选择）；时段上限 3→6（EEPROM V3 自动迁移）；运行状态实时反馈行；时段重叠前后端双重校验；循环启用改为蓝/绿状态按钮；二级页面卡片按功能性/维护性重排；循环轮询不再覆盖输入框（修复时段设置失效）
 - **v5.0** - UI 重构：电费计算卡片移除（电价迁入计费供电、清零迁入系统设置、电量校准迁入更多设置电量检测卡片）；拔除断电合并到功耗优化；用电历史底部添加当前/本月/上月三数据项；加载动画超时修复（fetch 5s 超时 + 3s 保底重试）；mDNS 可靠性提升（begin 重试 3 次 + update 提频）；Captive Portal 跨平台兼容（Android/Windows 探测端点）；SY7T609 readRegister 状态机化（主循环零阻塞）；EEPROM 地址冲突修复与清理
 - v4.9 - WiFi 发射功率优化、RSSI 动态功率调整、EnergyManager 延迟提交

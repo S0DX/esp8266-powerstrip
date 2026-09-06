@@ -4,46 +4,53 @@
   <line x1="0" y1="56" x2="400" y2="56" stroke="#e5e5ea" stroke-width="1"/>
   <text x="20" y="36" font-size="18" font-weight="600" fill="#1c1c1e">更多设置</text>
   <text x="370" y="36" font-size="13" fill="#007aff" text-anchor="end">‹ 返回</text>
-  <!-- 卡片排序 -->
-  <rect x="16" y="72" width="368" height="80" rx="12" fill="#fff"/>
-  <text x="32" y="96" font-size="11" fill="#8e8e93" letter-spacing="0.5">主页卡片排序</text>
-  <text x="32" y="120" font-size="13" fill="#8e8e93">点击进入拖拽排序</text>
-  <text x="368" y="120" font-size="14" fill="#c7c7cc" text-anchor="end">≡</text>
-  <!-- 功耗优化 -->
-  <rect x="16" y="164" width="368" height="120" rx="12" fill="#fff"/>
-  <text x="32" y="188" font-size="11" fill="#8e8e93" letter-spacing="0.5">功耗优化</text>
-  <text x="32" y="212" font-size="14" font-weight="500">拔除断电</text>
-  <text x="32" y="228" font-size="10" fill="#8e8e93">功率低于阈值自动关闭</text>
-  <rect x="340" y="200" width="36" height="22" rx="11" fill="#34c759"/>
-  <circle cx="368" cy="211" r="9" fill="#fff"/>
-  <line x1="32" y1="244" x2="368" y2="244" stroke="#e5e5ea" stroke-width="1"/>
-  <text x="32" y="266" font-size="13" fill="#8e8e93">功率阈值 (W)</text>
-  <rect x="200" y="252" width="120" height="28" rx="8" fill="#fff" stroke="#e5e5ea"/>
-  <text x="328" y="271" font-size="14" font-weight="500" text-anchor="end">1</text>
+  <!-- 24小时循环（功能性靠前） -->
+  <rect x="16" y="72" width="368" height="120" rx="12" fill="#fff"/>
+  <text x="32" y="96" font-size="11" fill="#8e8e93" letter-spacing="0.5">24 小时时间段循环</text>
+  <rect x="32" y="106" width="336" height="34" rx="17" fill="#e9e9eb"/>
+  <rect x="60" y="111" width="90" height="24" rx="7" fill="#34c759"/>
+  <rect x="200" y="111" width="70" height="24" rx="7" fill="#007aff"/>
+  <rect x="310" y="111" width="40" height="24" rx="7" fill="#ff9500"/>
+  <rect x="172" y="111" width="1.5" height="24" fill="#8e8e93" opacity="0.85"/>
+  <text x="32" y="164" font-size="12" fill="#8e8e93">拖动创建时段 · 运行状态实时显示 · 最多 6 个时段</text>
+  <text x="368" y="164" font-size="14" fill="#007aff" text-anchor="end">›</text>
   <!-- 倒计时关闭 -->
-  <rect x="16" y="296" width="368" height="80" rx="12" fill="#fff"/>
-  <text x="32" y="320" font-size="11" fill="#8e8e93" letter-spacing="0.5">倒计时关闭</text>
-  <text x="32" y="346" font-size="13" fill="#8e8e93">物理按钮自动倒计时（分钟）</text>
-  <text x="368" y="346" font-size="14" fill="#007aff" font-weight="600" text-anchor="end">120</text>
+  <rect x="16" y="204" width="368" height="80" rx="12" fill="#fff"/>
+  <text x="32" y="228" font-size="11" fill="#8e8e93" letter-spacing="0.5">倒计时关闭</text>
+  <text x="32" y="254" font-size="13" fill="#8e8e93">物理按钮自动倒计时（分钟）</text>
+  <text x="368" y="254" font-size="14" fill="#007aff" font-weight="600" text-anchor="end">120</text>
   <!-- 计费供电 -->
-  <rect x="16" y="388" width="368" height="180" rx="12" fill="#fff"/>
-  <text x="32" y="412" font-size="11" fill="#8e8e93" letter-spacing="0.5">计费供电</text>
-  <text x="32" y="436" font-size="14" font-weight="500">计费模式</text>
-  <rect x="340" y="424" width="36" height="22" rx="11" fill="#34c759"/>
-  <circle cx="368" cy="435" r="9" fill="#fff"/>
-  <line x1="32" y1="448" x2="368" y2="448" stroke="#e5e5ea" stroke-width="1"/>
-  <text x="32" y="468" font-size="13" fill="#8e8e93">模式</text>
-  <text x="368" y="468" font-size="13" fill="#007aff" text-anchor="end">按金额</text>
-  <line x1="32" y1="480" x2="368" y2="480" stroke="#e5e5ea" stroke-width="1"/>
-  <text x="32" y="500" font-size="13" fill="#8e8e93">金额阈值 (元)</text>
-  <text x="368" y="500" font-size="14" font-weight="500" text-anchor="end">10.00</text>
-  <line x1="32" y1="512" x2="368" y2="512" stroke="#e5e5ea" stroke-width="1"/>
-  <text x="32" y="532" font-size="13" fill="#8e8e93">电价 (元/度)</text>
-  <rect x="280" y="518" width="80" height="28" rx="8" fill="#fff" stroke="#e5e5ea"/>
-  <text x="352" y="537" font-size="14" font-weight="500" text-anchor="end">0.6</text>
-  <!-- 电量检测卡片 -->
-  <rect x="16" y="580" width="368" height="80" rx="12" fill="#fff"/>
-  <text x="32" y="604" font-size="11" fill="#8e8e93" letter-spacing="0.5">电量检测卡片</text>
-  <text x="32" y="628" font-size="13" fill="#8e8e93">电压/电流校准 · 恢复出厂 · 清零</text>
-  <text x="368" y="628" font-size="14" fill="#007aff" text-anchor="end">›</text>
+  <rect x="16" y="296" width="368" height="160" rx="12" fill="#fff"/>
+  <text x="32" y="320" font-size="11" fill="#8e8e93" letter-spacing="0.5">计费供电</text>
+  <text x="32" y="344" font-size="14" font-weight="500">计费模式</text>
+  <rect x="340" y="332" width="36" height="22" rx="11" fill="#34c759"/>
+  <circle cx="368" cy="343" r="9" fill="#fff"/>
+  <line x1="32" y1="360" x2="368" y2="360" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="382" font-size="13" fill="#8e8e93">模式</text>
+  <text x="368" y="382" font-size="13" fill="#007aff" text-anchor="end">按金额</text>
+  <line x1="32" y1="394" x2="368" y2="394" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="416" font-size="13" fill="#8e8e93">金额阈值 (元)</text>
+  <text x="368" y="416" font-size="14" font-weight="500" text-anchor="end">10.00</text>
+  <line x1="32" y1="428" x2="368" y2="428" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="446" font-size="13" fill="#8e8e93">电价 (元/度)</text>
+  <rect x="280" y="432" width="80" height="28" rx="8" fill="#fff" stroke="#e5e5ea"/>
+  <text x="352" y="451" font-size="14" font-weight="500" text-anchor="end">0.6</text>
+  <!-- 功耗优化 -->
+  <rect x="16" y="468" width="368" height="110" rx="12" fill="#fff"/>
+  <text x="32" y="492" font-size="11" fill="#8e8e93" letter-spacing="0.5">功耗优化</text>
+  <text x="32" y="516" font-size="14" font-weight="500">拔除断电</text>
+  <text x="32" y="532" font-size="10" fill="#8e8e93">功率低于阈值自动关闭</text>
+  <rect x="340" y="504" width="36" height="22" rx="11" fill="#34c759"/>
+  <circle cx="368" cy="515" r="9" fill="#fff"/>
+  <line x1="32" y1="548" x2="368" y2="548" stroke="#e5e5ea" stroke-width="1"/>
+  <text x="32" y="566" font-size="13" fill="#8e8e93">功率阈值 (W)</text>
+  <rect x="200" y="552" width="120" height="28" rx="8" fill="#fff" stroke="#e5e5ea"/>
+  <text x="328" y="571" font-size="14" font-weight="500" text-anchor="end">1</text>
+  <!-- 维护性卡片靠后 -->
+  <rect x="16" y="590" width="368" height="56" rx="12" fill="#fff"/>
+  <text x="32" y="622" font-size="11" fill="#8e8e93" letter-spacing="0.5">电量检测校准</text>
+  <text x="368" y="622" font-size="14" fill="#c7c7cc" text-anchor="end">›</text>
+  <rect x="16" y="658" width="368" height="56" rx="12" fill="#fff"/>
+  <text x="32" y="690" font-size="11" fill="#8e8e93" letter-spacing="0.5">主页卡片排序 · 系统设置</text>
+  <text x="368" y="690" font-size="14" fill="#c7c7cc" text-anchor="end">›</text>
 </svg>
