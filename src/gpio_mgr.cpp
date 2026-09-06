@@ -33,8 +33,11 @@ uint8_t GPIOManager::timer_target_ = 0;   // 0=both, 1=master-only
 #define EEPROM_CYCLE_EM_ADDR      209
 #define EEPROM_CYCLE_MAGIC        0xC8
 #define EEPROM_CYCLE_MAGIC_V2     0xC9
+#define EEPROM_CYCLE_MAGIC_V3     0xCA
 #define EEPROM_CYCLE_COUNT_ADDR   206
-#define EEPROM_CYCLE_PERIODS_ADDR 492
+// V3: 最多 6 个时段，存放在 726-749（V2 的 492-503 仅用于迁移读取）
+#define EEPROM_CYCLE_PERIODS_ADDR 726
+#define EEPROM_CYCLE_PERIODS_ADDR_OLD 492
 
 static inline unsigned long millisDiff(unsigned long now, unsigned long start) {
     return (now >= start) ? (now - start) : (ULONG_MAX - start + now + 1);
@@ -167,7 +170,7 @@ void GPIOManager::init() {
     uint8_t redLedVal = EEPROM.read(EEPROM_RED_LED_ADDR);
     red_led_enabled_ = (redLedVal != 0x00);  // 未初始化(0xFF)或明确开启都默认开启
 
-    if (EEPROM.read(EEPROM_CYCLE_MAGIC_ADDR) == EEPROM_CYCLE_MAGIC_V2) {
+    if (EEPROM.read(EEPROM_CYCLE_MAGIC_ADDR) == EEPROM_CYCLE_MAGIC_V3) {
         cycle_enabled_ = (EEPROM.read(EEPROM_CYCLE_ENABLED_ADDR) == 1);
         cycle_period_count_ = EEPROM.read(EEPROM_CYCLE_COUNT_ADDR);
         if (cycle_period_count_ > MAX_CYCLE_PERIODS) cycle_period_count_ = 0;
@@ -178,6 +181,28 @@ void GPIOManager::init() {
             cycle_periods_[i].eh = EEPROM.read(addr + 2);
             cycle_periods_[i].em = EEPROM.read(addr + 3);
         }
+    } else if (EEPROM.read(EEPROM_CYCLE_MAGIC_ADDR) == EEPROM_CYCLE_MAGIC_V2) {
+        cycle_enabled_ = (EEPROM.read(EEPROM_CYCLE_ENABLED_ADDR) == 1);
+        cycle_period_count_ = EEPROM.read(EEPROM_CYCLE_COUNT_ADDR);
+        if (cycle_period_count_ > 3) cycle_period_count_ = 0;
+        for (uint8_t i = 0; i < cycle_period_count_; i++) {
+            int addr = EEPROM_CYCLE_PERIODS_ADDR_OLD + i * 4;
+            cycle_periods_[i].sh = EEPROM.read(addr);
+            cycle_periods_[i].sm = EEPROM.read(addr + 1);
+            cycle_periods_[i].eh = EEPROM.read(addr + 2);
+            cycle_periods_[i].em = EEPROM.read(addr + 3);
+        }
+        EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
+        EEPROM.write(EEPROM_CYCLE_COUNT_ADDR, cycle_period_count_);
+        for (uint8_t i = 0; i < MAX_CYCLE_PERIODS; i++) {
+            int addr = EEPROM_CYCLE_PERIODS_ADDR + i * 4;
+            EEPROM.write(addr, cycle_periods_[i].sh);
+            EEPROM.write(addr + 1, cycle_periods_[i].sm);
+            EEPROM.write(addr + 2, cycle_periods_[i].eh);
+            EEPROM.write(addr + 3, cycle_periods_[i].em);
+        }
+        EEPROM.commit();
+        DBG_PRINTF("[GPIO] Cycle data migrated V2 -> V3 (max %d periods)\n", MAX_CYCLE_PERIODS);
     } else if (EEPROM.read(EEPROM_CYCLE_MAGIC_ADDR) == EEPROM_CYCLE_MAGIC) {
         cycle_enabled_ = (EEPROM.read(EEPROM_CYCLE_ENABLED_ADDR) == 1);
         uint8_t old_sh = EEPROM.read(EEPROM_CYCLE_SH_ADDR);
@@ -190,9 +215,9 @@ void GPIOManager::init() {
         } else {
             cycle_period_count_ = 0;
         }
-        EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+        EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
         EEPROM.write(EEPROM_CYCLE_COUNT_ADDR, cycle_period_count_);
-        for (uint8_t i = 0; i < cycle_period_count_; i++) {
+        for (uint8_t i = 0; i < MAX_CYCLE_PERIODS; i++) {
             int addr = EEPROM_CYCLE_PERIODS_ADDR + i * 4;
             EEPROM.write(addr, cycle_periods_[i].sh);
             EEPROM.write(addr + 1, cycle_periods_[i].sm);
@@ -200,7 +225,7 @@ void GPIOManager::init() {
             EEPROM.write(addr + 3, cycle_periods_[i].em);
         }
         EEPROM.commit();
-        DBG_PRINTF("[GPIO] Cycle data migrated to V2 format\n");
+        DBG_PRINTF("[GPIO] Cycle data migrated V1 -> V3\n");
     } else {
         cycle_enabled_ = false;
         cycle_period_count_ = 0;
@@ -758,7 +783,7 @@ void GPIOManager::handleTimer() {
 // 24小时循环控制实现
 void GPIOManager::setCycleEnabled(bool enabled) {
     cycle_enabled_ = enabled;
-    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
     EEPROM.write(EEPROM_CYCLE_ENABLED_ADDR, enabled ? 1 : 0);
     requestEEPROMCommit();
     DBG_PRINTF("[GPIO] Cycle enabled: %s\n", enabled ? "yes" : "no");
@@ -766,6 +791,10 @@ void GPIOManager::setCycleEnabled(bool enabled) {
 
 bool GPIOManager::isCycleEnabled() {
     return cycle_enabled_;
+}
+
+bool GPIOManager::isCycleActive() {
+    return cycle_is_active_;
 }
 
 void GPIOManager::setCycleTime(uint8_t start_h, uint8_t start_m, uint8_t end_h, uint8_t end_m) {
@@ -783,7 +812,7 @@ void GPIOManager::setCycleTime(uint8_t start_h, uint8_t start_m, uint8_t end_h, 
         cycle_periods_[0].eh = end_h;
         cycle_periods_[0].em = end_m;
     }
-    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
     int addr = EEPROM_CYCLE_PERIODS_ADDR;
     EEPROM.write(addr, cycle_periods_[0].sh);
     EEPROM.write(addr + 1, cycle_periods_[0].sm);
@@ -813,7 +842,7 @@ void GPIOManager::setCyclePeriod(uint8_t idx, uint8_t sh, uint8_t sm, uint8_t eh
     EEPROM.write(addr + 1, sm);
     EEPROM.write(addr + 2, eh);
     EEPROM.write(addr + 3, em);
-    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
     requestEEPROMCommit();
     if (idx == 0) {
         cycle_start_h_ = sh; cycle_start_m_ = sm;
@@ -845,7 +874,7 @@ bool GPIOManager::addCyclePeriod(uint8_t sh, uint8_t sm, uint8_t eh, uint8_t em)
     EEPROM.write(addr + 3, em);
     cycle_period_count_++;
     EEPROM.write(EEPROM_CYCLE_COUNT_ADDR, cycle_period_count_);
-    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
     requestEEPROMCommit();
     DBG_PRINTF("[GPIO] Cycle period added (%d): %02d:%02d-%02d:%02d\n", cycle_period_count_, sh, sm, eh, em);
     return true;
@@ -866,7 +895,7 @@ bool GPIOManager::removeCyclePeriod(uint8_t idx) {
         EEPROM.write(addr + 2, cycle_periods_[i].eh);
         EEPROM.write(addr + 3, cycle_periods_[i].em);
     }
-    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V2);
+    EEPROM.write(EEPROM_CYCLE_MAGIC_ADDR, EEPROM_CYCLE_MAGIC_V3);
     requestEEPROMCommit();
     if (cycle_period_count_ > 0) {
         cycle_start_h_ = cycle_periods_[0].sh; cycle_start_m_ = cycle_periods_[0].sm;

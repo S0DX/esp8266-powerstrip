@@ -47,6 +47,7 @@ public:
     // 24小时循环功能
     static void setCycleEnabled(bool enabled);
     static bool isCycleEnabled();
+    static bool isCycleActive();
     static void setCycleTime(uint8_t start_h, uint8_t start_m, uint8_t end_h, uint8_t end_m);
     static void getCycleTime(uint8_t& start_h, uint8_t& start_m, uint8_t& end_h, uint8_t& end_m);
     static void setCyclePeriod(uint8_t idx, uint8_t sh, uint8_t sm, uint8_t eh, uint8_t em);
@@ -159,7 +160,7 @@ private:
     static bool cycle_enabled_;
     static uint8_t cycle_start_h_, cycle_start_m_, cycle_end_h_, cycle_end_m_;
     static bool cycle_is_active_;
-    static const uint8_t MAX_CYCLE_PERIODS = 3;
+    static const uint8_t MAX_CYCLE_PERIODS = 6;
     struct CyclePeriod { uint8_t sh, sm, eh, em; };
     static CyclePeriod cycle_periods_[MAX_CYCLE_PERIODS];
     static uint8_t cycle_period_count_;

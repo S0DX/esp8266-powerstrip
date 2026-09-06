@@ -24,7 +24,7 @@ volatile bool WebConfigServer::web_request_active_ = false;
 unsigned long WebConfigServer::web_request_start_ = 0;
 
 // /api/status 使用静态缓冲区，避免 1600 字节大数组压在栈上导致栈溢出
-static char status_buf[1600];
+static char status_buf[2048];
 
 // P0: Web 请求优先级机制实现
 bool WebConfigServer::isWebRequestActive() {
@@ -134,6 +134,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .time-picker-item{height:36px;line-height:36px;font-size:20px;color:#1c1c1e;scroll-snap-align:center;transition:opacity .15s,color .15s;opacity:.2}
 .time-picker-item.active{opacity:1;font-weight:600}
 .time-picker-separator{font-size:17px;color:#8e8e93;padding:0 8px;position:relative;z-index:2}
+.cycle-track{position:relative;height:48px;background:#e9e9eb;border-radius:24px;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-y;transition:opacity .3s}
+.cycle-seg{position:absolute;top:6px;bottom:6px;border-radius:9px;min-width:6px}
+.seg-handle{position:absolute;top:0;bottom:0;width:28px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ew-resize;z-index:3}
+.seg-handle::after{content:'';width:4px;height:20px;border-radius:2px;background:rgba(255,255,255,.95);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.seg-hl{left:0}
+.seg-hr{right:0}
+.cycle-now{position:absolute;top:6px;bottom:6px;width:1.5px;background:#8e8e93;z-index:5;border-radius:1px;pointer-events:none;opacity:.85}
+.cycle-scale{display:flex;justify-content:space-between;padding:3px 4px 0;font-size:9px;color:#c7c7cc}
+.cycle-tip{position:absolute;top:-26px;transform:translateX(-50%);background:#1c1c1e;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;z-index:30;white-space:nowrap;pointer-events:none}
+.cycle-add-pill{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;color:#007aff;font-size:13px;font-weight:600;padding:5px 14px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.15);pointer-events:none;white-space:nowrap}
+.cycle-draft{position:absolute;top:6px;bottom:6px;border-radius:9px;background:rgba(0,122,255,.2);border:1.5px solid #007aff;box-sizing:border-box;z-index:2;pointer-events:none}
+.cycle-row{display:flex;align-items:center;gap:10px;padding:12px 0}
+.cycle-row+.cycle-row{border-top:.5px solid #e5e5ea}
+.period-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.cycle-badge{font-size:11px;color:#8e8e93;background:#f2f2f7;border-radius:99px;padding:2px 8px;font-weight:500;flex-shrink:0}
+.cycle-badge-tap{cursor:pointer;color:#007aff;background:rgba(0,122,255,.1);-webkit-tap-highlight-color:transparent;transition:background .15s}
+.cycle-txt-btn{background:none;border:none;font-size:15px;font-family:inherit;cursor:pointer;padding:8px 2px;font-weight:400;-webkit-tap-highlight-color:transparent}
+.cycle-empty{font-size:13px;color:#c7c7cc;text-align:center;line-height:36px}
 </style>
 </head>
 <body>
@@ -350,6 +368,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 </div>
 
+<div id="cycleEditM" class="modal modal-layer-1" style="display:none">
+<div class="modal-content">
+<div class="modal-title" id="cycleEditTitle" style="text-align:center">添加时段</div>
+<div style="display:flex;gap:12px">
+  <div style="flex:1">
+    <div class="lbl" style="margin-bottom:6px">开始时间</div>
+    <input type="time" id="ceStart" class="input-field" style="margin:0;padding:10px">
+  </div>
+  <div style="flex:1">
+    <div class="lbl" style="margin-bottom:6px">结束时间</div>
+    <input type="time" id="ceEnd" class="input-field" style="margin:0;padding:10px">
+  </div>
+</div>
+<p style="font-size:11px;color:#c7c7cc;margin:10px 0 0;text-align:center">结束时间早于开始时间时，时段将跨午夜生效</p>
+<p id="cycleEditErr" style="display:none;font-size:12px;color:#ff3b30;margin:10px 0 0;text-align:center"></p>
+<button class="btn" style="margin-top:16px" onclick="cycleEditSave()">保存</button>
+<button id="cycleEditDelBtn" class="cycle-txt-btn" style="width:100%;padding:12px 0;margin:0;color:#ff3b30" onclick="cycleEditDelete()">删除此时段</button>
+<button class="cycle-txt-btn" style="width:100%;padding:12px 0;margin:0;color:#007aff" onclick="cycleEditCancel()">取消</button>
+</div>
+</div>
+
 <div id="moreSettingsM" class="settings-page" style="display:none">
 <div style="min-height:100vh;padding:16px;padding-bottom:80px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -358,33 +397,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 
 <div class="card">
-<div class="card-title">主页卡片排序</div>
-<p style="font-size:12px;color:#8e8e93;margin:0 0 12px">拖动调整卡片显示顺序</p>
-<div id="sortList"></div>
+<div class="card-title">24 小时时间段循环</div>
+<div style="position:relative;margin-top:24px">
+<div id="cycleTip" class="cycle-tip" style="display:none">--:--</div>
+<div class="cycle-track" id="cycleTrack"></div>
+<div class="cycle-scale"><span>0点</span><span>6点</span><span>12点</span><span>18点</span><span>24点</span></div>
 </div>
-
-<div class="card">
-<div class="card-title">电量检测卡片</div>
-<p style="font-size:11px;color:#8e8e93;margin:4px 0 12px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
-<div style="margin-bottom:12px">
-<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电压校准（实测 V）</div>
-<div style="display:flex;gap:8px;align-items:center">
-<input type="number" id="calibV" class="input-field" placeholder="220.0" step="0.1" min="1" max="300" style="flex:1;width:auto;margin:0">
-<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibV()">校准</button>
+<p id="cycleMsg" style="display:none;font-size:12px;color:#ff3b30;margin:8px 0 0"></p>
+<div class="info-row" style="margin:12px 0 0">
+  <span class="lbl">运行状态</span>
+  <span id="cycleStatus" style="color:#8e8e93;font-weight:600">--</span>
 </div>
-</div>
-<div style="margin-bottom:12px">
-<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电流校准（实测 A）</div>
-<div style="display:flex;gap:8px;align-items:center">
-<input type="number" id="calibI" class="input-field" placeholder="4.545" step="0.001" min="0.001" max="100" style="flex:1;width:auto;margin:0">
-<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibI()">校准</button>
-</div>
-</div>
-<div style="border-top:1px solid #e5e5ea;margin:12px 0;padding-top:12px">
-<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doResetCalib()">恢复出厂校准</button>
-<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doSaveCalib()">保存校准到 Flash</button>
-<button class="btn btn-ghost" style="width:100%;margin:0" onclick="doClearEnergy()">清零电能计数器</button>
-</div>
+<p style="font-size:12px;color:#8e8e93;margin:8px 0 6px">在空白处按住并拖动即可添加时段 · 拖动色块边缘调整 · 轻点色块编辑</p>
+<p style="font-size:11px;color:#c7c7cc;margin:0 0 10px">结束早于开始表示跨午夜 · 需联网同步时间 · 最多 6 个时段</p>
+<div id="cyclePeriodsList"></div>
+<button id="cyclePowerBtn" class="btn" style="margin:16px 0 0" onclick="toggleCycle()">启用循环</button>
 </div>
 
 <div class="card">
@@ -393,62 +420,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="info-row" style="margin-bottom:10px"><span class="lbl">物理按钮自动倒计时</span><div class="toggle" id="buttonAutoTimerToggle" onclick="toggleButtonAutoTimer()"></div></div>
 <p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后按物理按钮自动启动倒计时关闭</p>
 </div>
-</div>
-
-<div class="card">
-<div class="card-title">24 小时时间段循环</div>
-<p style="font-size:13px;color:#8e8e93;margin-bottom:12px">设定设备在此区间内自动保持开启 (依赖 NTP 联网)</p>
-<div id="cyclePeriodsList"></div>
-<div id="cycleAddRow" style="display:flex;gap:12px;margin-bottom:12px">
-  <div style="flex:1">
-    <div class="lbl" style="margin-bottom:4px">开启时间</div>
-    <input type="time" id="cStartTime" class="input-field" style="margin:0;padding:8px">
-  </div>
-  <div style="flex:1">
-    <div class="lbl" style="margin-bottom:4px">结束时间</div>
-    <input type="time" id="cEndTime" class="input-field" style="margin:0;padding:8px">
-  </div>
-</div>
-<div style="display:flex;gap:8px;margin-bottom:12px">
-  <button class="timer-btn" style="flex:1" onclick="addCyclePeriod()">添加时段</button>
-</div>
-<div class="info-row" style="margin-bottom:12px">
-  <span class="lbl">启用循环</span>
-  <div class="toggle" id="cycleToggle" onclick="toggleCycle()"></div>
-</div>
-</div>
-
-<div class="card">
-<div class="card-title">MQTT 代理平台</div>
-<div class="info-row" style="margin-bottom:12px">
-  <span class="lbl">启用 MQTT</span>
-  <div class="toggle" id="mqttToggle" onclick="toggleMqtt()"></div>
-</div>
-<input type="text" id="mqServer" class="input-field" placeholder="服务器地址 (IP 或域名)" maxlength="32">
-<input type="number" id="mqPort" class="input-field" placeholder="端口号 (默认 1883)">
-<input type="text" id="mqUser" class="input-field" placeholder="用户名 (选填)" maxlength="20">
-<input type="password" id="mqPass" class="input-field" placeholder="密码 (选填)" maxlength="20">
-<button class="btn" style="margin-top:12px" onclick="saveMqtt()">保存 MQTT 设置</button>
-</div>
-
-<div class="card">
-<div class="card-title">功耗优化</div>
-<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #e5e5ea">
-  <span style="font-size:14px">拔断阈值:</span>
-  <input type="number" id="pwrThresh" class="input-field" style="width:80px;margin:0;padding:8px" step="0.1" min="0.1" max="1" value="0.5">
-  <span style="font-size:14px">W</span>
-  <button class="timer-btn" style="width:auto;margin:0 0 0 auto;padding:0 12px;height:32px;font-size:13px" onclick="savePowerOff()">保存</button>
-</div>
-<div class="info-row" style="margin-top:12px;margin-bottom:10px">
-  <span class="lbl">STA 连接后自动关闭 AP</span>
-  <div class="toggle" id="autoCloseAPToggle" onclick="toggleAutoCloseAP()"></div>
-</div>
-<p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后 STA 连接 5 分钟自动关闭 AP，STA 断开时自动恢复。默认关闭，关闭前可通过 AP 访问此开关。</p>
-<div class="info-row" style="margin-top:12px;margin-bottom:10px">
-  <span class="lbl">限制 WiFi 发射功率</span>
-  <div class="toggle" id="wifiTxPowerToggle" onclick="toggleWiFiTxPower()"></div>
-</div>
-<p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后将弱信号下的最大发射功率从 14dBm 降到 10dBm，可降低峰值电流与功耗，可能改善继电器异响。</p>
 </div>
 
 <div class="card">
@@ -502,6 +473,69 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
   <span style="font-size:14px">元/度</span>
   <button class="timer-btn" style="width:auto;margin:0 0 0 auto;padding:0 12px;height:32px;font-size:13px" onclick="savePrice()">保存</button>
 </div>
+</div>
+
+<div class="card">
+<div class="card-title">功耗优化</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #e5e5ea">
+  <span style="font-size:14px">拔断阈值:</span>
+  <input type="number" id="pwrThresh" class="input-field" style="width:80px;margin:0;padding:8px" step="0.1" min="0.1" max="1" value="0.5">
+  <span style="font-size:14px">W</span>
+  <button class="timer-btn" style="width:auto;margin:0 0 0 auto;padding:0 12px;height:32px;font-size:13px" onclick="savePowerOff()">保存</button>
+</div>
+<div class="info-row" style="margin-top:12px;margin-bottom:10px">
+  <span class="lbl">STA 连接后自动关闭 AP</span>
+  <div class="toggle" id="autoCloseAPToggle" onclick="toggleAutoCloseAP()"></div>
+</div>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后 STA 连接 5 分钟自动关闭 AP，STA 断开时自动恢复。默认关闭，关闭前可通过 AP 访问此开关。</p>
+<div class="info-row" style="margin-top:12px;margin-bottom:10px">
+  <span class="lbl">限制 WiFi 发射功率</span>
+  <div class="toggle" id="wifiTxPowerToggle" onclick="toggleWiFiTxPower()"></div>
+</div>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后将弱信号下的最大发射功率从 14dBm 降到 10dBm，可降低峰值电流与功耗，可能改善继电器异响。</p>
+</div>
+
+<div class="card">
+<div class="card-title">MQTT 代理平台</div>
+<div class="info-row" style="margin-bottom:12px">
+  <span class="lbl">启用 MQTT</span>
+  <div class="toggle" id="mqttToggle" onclick="toggleMqtt()"></div>
+</div>
+<input type="text" id="mqServer" class="input-field" placeholder="服务器地址 (IP 或域名)" maxlength="32">
+<input type="number" id="mqPort" class="input-field" placeholder="端口号 (默认 1883)">
+<input type="text" id="mqUser" class="input-field" placeholder="用户名 (选填)" maxlength="20">
+<input type="password" id="mqPass" class="input-field" placeholder="密码 (选填)" maxlength="20">
+<button class="btn" style="margin-top:12px" onclick="saveMqtt()">保存 MQTT 设置</button>
+</div>
+
+<div class="card">
+<div class="card-title">电量检测卡片</div>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 12px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
+<div style="margin-bottom:12px">
+<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电压校准（实测 V）</div>
+<div style="display:flex;gap:8px;align-items:center">
+<input type="number" id="calibV" class="input-field" placeholder="220.0" step="0.1" min="1" max="300" style="flex:1;width:auto;margin:0">
+<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibV()">校准</button>
+</div>
+</div>
+<div style="margin-bottom:12px">
+<div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电流校准（实测 A）</div>
+<div style="display:flex;gap:8px;align-items:center">
+<input type="number" id="calibI" class="input-field" placeholder="4.545" step="0.001" min="0.001" max="100" style="flex:1;width:auto;margin:0">
+<button class="btn" style="width:auto;flex:0 0 80px;margin:0" onclick="doCalibI()">校准</button>
+</div>
+</div>
+<div style="border-top:1px solid #e5e5ea;margin:12px 0;padding-top:12px">
+<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doResetCalib()">恢复出厂校准</button>
+<button class="btn btn-ghost" style="width:100%;margin:0 0 8px 0" onclick="doSaveCalib()">保存校准到 Flash</button>
+<button class="btn btn-ghost" style="width:100%;margin:0" onclick="doClearEnergy()">清零电能计数器</button>
+</div>
+</div>
+
+<div class="card">
+<div class="card-title">主页卡片排序</div>
+<p style="font-size:12px;color:#8e8e93;margin:0 0 12px">拖动调整卡片显示顺序</p>
+<div id="sortList"></div>
 </div>
 
 <div class="card">
@@ -572,6 +606,7 @@ function init(){
     
     var closeMoreBtn=document.querySelector('button[onclick="closeMoreSettings()"]');
     if(closeMoreBtn)closeMoreBtn.addEventListener('click',closeMoreSettings);
+    cycleInitTrack();
     loadCardOrder(0);
     fetch('/api/time?ts='+Math.floor(Date.now()/1000));
   }catch(e){
@@ -684,18 +719,19 @@ function update(){
     if(d.mqp !== undefined && document.activeElement !== document.getElementById('mqPort')) document.getElementById('mqPort').value=d.mqp;
     if(d.mqu !== undefined && document.activeElement !== document.getElementById('mqUser')) document.getElementById('mqUser').value=d.mqu;
     if(d.mqpw !== undefined && document.activeElement !== document.getElementById('mqPass')) document.getElementById('mqPass').value=d.mqpw;
-    if(d.sh !== undefined && document.activeElement !== document.getElementById('cStartTime')) {
-      document.getElementById('cStartTime').value = (d.sh<10?'0':'')+d.sh+':'+(d.sm<10?'0':'')+d.sm;
+    // 24h 循环：拖动期间冻结本地渲染，避免 3 秒轮询重建 DOM 打断拖拽
+    _cycleEnabled=!!d.ce;
+    _cycleNowMins=(d.cm!==undefined)?d.cm:-1;
+    if(!_cycleDrag){
+      _cyclePeriods=d.cp||[];
+      renderCycleTimeline();
+      renderCyclePeriods();
     }
-    if(d.eh !== undefined && document.activeElement !== document.getElementById('cEndTime')) {
-      document.getElementById('cEndTime').value = (d.eh<10?'0':'')+d.eh+':'+(d.em<10?'0':'')+d.em;
-    }
+    cycleUpdateNow();
+    updateCycleStatus(d);
 
-    var ct=document.getElementById('cycleToggle');
-    if(ct){if(d.ce)ct.classList.add('on');else ct.classList.remove('on');}
-    renderCyclePeriods(d.cp);
-    var addRow=document.getElementById('cycleAddRow');
-    if(addRow)addRow.style.display=(d.cpc>=3)?'none':'flex';
+    var ct=document.getElementById('cyclePowerBtn');
+    if(ct)cyclePowerBtnRender(!!d.ce);
     var mtog=document.getElementById('mqttToggle');
     if(mtog){if(d.mqe)mtog.classList.add('on');else mtog.classList.remove('on');}
 
@@ -1299,50 +1335,406 @@ function toggleLock(){
   }).catch(function(e){console.log('Lock error:',e)});
 }
 
-function toggleCycle(){
-  var ct=document.getElementById('cycleToggle');
-  if(!ct)return;
-  var en=!ct.classList.contains('on');
-  if(en){
-    var st=document.getElementById('cStartTime').value;
-    var et=document.getElementById('cEndTime').value;
-    if(!st || !et || st=='' || et==''){
-      alert('请先设置循环时间段');
-      return;
+// ============= 24h 循环时间段（可视化时间轴） =============
+var _cyclePeriods=[];
+var _cycleCount=0;
+var _cycleEnabled=false;
+var _cycleNowMins=-1;
+var _cycleEditing=-1;
+var _cycleDrag=null;
+var _cycleDraft=null;
+var _cycleTrackInited=false;
+var _cycleMsgT=null;
+var CYCLE_COLORS=['#34c759','#007aff','#ff9500','#af52de','#30b0c7','#ff2d55'];
+var CYCLE_MAX=6;
+function pad2(n){return (n<10?'0':'')+n;}
+function cyclePeriodForMinute(cp,cur){
+  for(var i=0;i<cp.length;i++){
+    var p=cp[i];
+    var s=p.sh*60+p.sm,e=p.eh*60+p.em;
+    if(s<=e){if(cur>=s&&cur<e)return p;}
+    else{if(cur>=s||cur<e)return p;}
+  }
+  return null;
+}
+function cycleIntervals(p){
+  var s=p.sh*60+p.sm,e=p.eh*60+p.em;
+  if(s<e)return [[s,e]];
+  if(s>e)return [[s,1440],[0,e]];
+  return [];
+}
+function cycleOverlapIdx(p,skip){
+  var a=cycleIntervals(p);
+  if(!a.length)return -1;
+  for(var i=0;i<_cyclePeriods.length;i++){
+    if(i===skip)continue;
+    var b=cycleIntervals(_cyclePeriods[i]);
+    for(var x=0;x<a.length;x++)for(var y=0;y<b.length;y++){
+      if(a[x][0]<b[y][1]&&b[y][0]<a[x][1])return i;
     }
   }
-  fetch('/api/cycle?enabled='+en).then(function(r){return r.json()}).then(function(d){
-    if(d.enabled)ct.classList.add('on');else ct.classList.remove('on');
+  return -1;
+}
+function cycleSegs(){
+  var out=[];
+  for(var i=0;i<_cyclePeriods.length;i++){
+    var p=_cyclePeriods[i];
+    var s=p.sh*60+p.sm,e=p.eh*60+p.em;
+    if(s<e)out.push({i:i,s:s,e:e,hl:1,hr:1});
+    else if(s>e){out.push({i:i,s:s,e:1440,hl:1,hr:0});out.push({i:i,s:0,e:e,hl:0,hr:1});}
+  }
+  return out;
+}
+function cycleLiveRender(){
+  var track=document.getElementById('cycleTrack');
+  if(!track)return;
+  var html='';
+  if(!_cyclePeriods.length && !_cycleDraft){
+    html+='<div class="cycle-add-pill">＋ 添加时段</div>';
+  }
+  var segs=cycleSegs();
+  for(var k=0;k<segs.length;k++){
+    var g=segs[k];
+    var col=CYCLE_COLORS[g.i%CYCLE_COLORS.length];
+    html+='<div class="cycle-seg" data-i="'+g.i+'" style="left:'+(g.s/14.4)+'%;width:'+((g.e-g.s)/14.4)+'%;background:'+col+'">';
+    if(g.hl)html+='<div class="seg-handle seg-hl" data-i="'+g.i+'" data-k="s"></div>';
+    if(g.hr)html+='<div class="seg-handle seg-hr" data-i="'+g.i+'" data-k="e"></div>';
+    html+='</div>';
+  }
+  if(_cycleDraft&&_cycleDraft.e>_cycleDraft.s){
+    html+='<div class="cycle-draft" style="left:'+(_cycleDraft.s/14.4)+'%;width:'+((_cycleDraft.e-_cycleDraft.s)/14.4)+'%"></div>';
+  }else if(_cycleDraft){
+    html+='<div class="cycle-draft" style="left:'+(_cycleDraft.s/14.4)+'%;width:3px"></div>';
+  }
+  html+='<div class="cycle-now" id="cycleNow" style="display:none"></div>';
+  track.innerHTML=html;
+  track.style.opacity=_cycleEnabled?'1':'.45';
+  cycleUpdateNow();
+}
+function renderCycleTimeline(){
+  if(_cycleDrag)return;
+  cycleLiveRender();
+}
+function cycleUpdateNow(){
+  var el=document.getElementById('cycleNow');
+  if(!el)return;
+  if(_cycleNowMins<0){el.style.display='none';return;}
+  el.style.display='block';
+  el.style.left=(_cycleNowMins/14.4)+'%';
+}
+function cycleMinutesFromEvent(ev){
+  var t=document.getElementById('cycleTrack');
+  if(!t)return 0;
+  var r=t.getBoundingClientRect();
+  var m=Math.round((ev.clientX-r.left)/r.width*1440);
+  return Math.max(0,Math.min(1439,m));
+}
+function cycleSnap(m){
+  m=Math.round(m/5)*5;
+  return Math.max(0,Math.min(1439,m));
+}
+function cycleShowTip(m){
+  cycleShowTipRange(m,null);
+}
+function cycleShowTipRange(a,b){
+  var tip=document.getElementById('cycleTip');
+  var t=document.getElementById('cycleTrack');
+  if(!tip||!t)return;
+  tip.style.display='block';
+  tip.textContent=(b===null)?(pad2(Math.floor(a/60))+':'+pad2(a%60))
+    :(pad2(Math.floor(Math.min(a,b)/60))+':'+pad2(Math.min(a,b)%60)+' – '+pad2(Math.floor(Math.max(a,b)/60))+':'+pad2(Math.max(a,b)%60));
+  var r=t.getBoundingClientRect();
+  var pos=(b===null)?a:Math.max(a,b);
+  var x=Math.max(20,Math.min(r.width-20,r.width*pos/1440));
+  tip.style.left=x+'px';
+}
+function cycleHideTip(){
+  var tip=document.getElementById('cycleTip');
+  if(tip)tip.style.display='none';
+}
+function cycleMsg(t){
+  var el=document.getElementById('cycleMsg');
+  if(!el)return;
+  el.textContent=t;
+  el.style.display='block';
+  if(_cycleMsgT)clearTimeout(_cycleMsgT);
+  _cycleMsgT=setTimeout(function(){el.style.display='none';},2600);
+}
+function cycleInitTrack(){
+  if(_cycleTrackInited)return;
+  var t=document.getElementById('cycleTrack');
+  if(!t)return;
+  _cycleTrackInited=true;
+  if(!window.PointerEvent){
+    // 不支持 Pointer Events 的浏览器回退为点击弹窗设置
+    t.addEventListener('click',function(ev){
+      var seg=(ev.target&&ev.target.closest)?ev.target.closest('.cycle-seg'):null;
+      if(seg){cycleEditIdx(parseInt(seg.getAttribute('data-i'),10));return;}
+      if(_cyclePeriods.length>=CYCLE_MAX){cycleMsg('最多 '+CYCLE_MAX+' 个时段');return;}
+      var m=cycleSnap(cycleMinutesFromEvent(ev));
+      cycleOpenEdit(-1,m,(m+60)%1440);
+    });
+    return;
+  }
+  t.addEventListener('pointerdown',function(ev){
+    var h=(ev.target&&ev.target.closest)?ev.target.closest('.seg-handle'):null;
+    var seg=(!h&&ev.target&&ev.target.closest)?ev.target.closest('.cycle-seg'):null;
+    if(h){
+      ev.preventDefault();
+      var i=parseInt(h.getAttribute('data-i'),10);
+      var p=_cyclePeriods[i];
+      if(!p)return;
+      _cycleDrag={i:i,k:h.getAttribute('data-k'),moved:false,sx:ev.clientX,
+        os:p.sh*60+p.sm,oe:p.eh*60+p.em};
+      try{t.setPointerCapture(ev.pointerId);}catch(e){}
+      cycleShowTip(_cycleDrag.k==='s'?_cycleDrag.os:_cycleDrag.oe);
+      return;
+    }
+    if(seg){
+      _cycleDrag={tapEdit:parseInt(seg.getAttribute('data-i'),10),moved:false,sx:ev.clientX};
+      try{t.setPointerCapture(ev.pointerId);}catch(e){}
+      return;
+    }
+    // 空白处按下：直接进入拖动创建
+    if(_cyclePeriods.length>=CYCLE_MAX){
+      _cycleDrag={full:true};
+      try{t.setPointerCapture(ev.pointerId);}catch(e){}
+      cycleMsg('最多 '+CYCLE_MAX+' 个时段');
+      return;
+    }
+    var m=cycleSnap(cycleMinutesFromEvent(ev));
+    _cycleDrag={create:true,anchor:m,cur:m,moved:false,sx:ev.clientX};
+    _cycleDraft={s:m,e:m};
+    cycleLiveRender();
+    cycleShowTipRange(m,m);
+    try{t.setPointerCapture(ev.pointerId);}catch(e){}
+  });
+  t.addEventListener('pointermove',function(ev){
+    if(!_cycleDrag)return;
+    if(_cycleDrag.k==='s'||_cycleDrag.k==='e'){
+      ev.preventDefault();
+      if(Math.abs(ev.clientX-_cycleDrag.sx)>6)_cycleDrag.moved=true;
+      var m=cycleSnap(cycleMinutesFromEvent(ev));
+      var p=_cyclePeriods[_cycleDrag.i];
+      if(!p)return;
+      if(_cycleDrag.k==='s'){
+        if(m!==p.eh*60+p.em){p.sh=Math.floor(m/60);p.sm=m%60;}
+      }else{
+        if(m!==p.sh*60+p.sm){p.eh=Math.floor(m/60);p.em=m%60;}
+      }
+      cycleLiveRender();
+      cycleShowTip(m);
+    }else if(_cycleDrag.create){
+      ev.preventDefault();
+      if(Math.abs(ev.clientX-_cycleDrag.sx)>6)_cycleDrag.moved=true;
+      var mc=cycleSnap(cycleMinutesFromEvent(ev));
+      _cycleDrag.cur=mc;
+      _cycleDraft={s:Math.min(_cycleDrag.anchor,mc),e:Math.max(_cycleDrag.anchor,mc)};
+      cycleLiveRender();
+      cycleShowTipRange(_cycleDrag.anchor,mc);
+    }
+  });
+  t.addEventListener('pointerup',function(ev){
+    if(!_cycleDrag)return;
+    var d=_cycleDrag;
+    _cycleDrag=null;
+    cycleHideTip();
+    if(d.full)return;
+    if(d.moved){
+      if(d.k==='s'||d.k==='e')cycleCommitDrag(d);
+      else if(d.create)cycleCreateSave(Math.min(d.anchor,d.cur),Math.max(d.anchor,d.cur));
+      return;
+    }
+    if(d.tapEdit!==undefined&&d.tapEdit!==null){cycleEditIdx(d.tapEdit);return;}
+    if(d.k==='s'||d.k==='e'){cycleEditIdx(d.i);return;}
+    if(d.create)cycleCreateSave(d.anchor,(d.anchor+60)%1440);
+  });
+  t.addEventListener('pointercancel',function(){
+    if(!_cycleDrag)return;
+    var d=_cycleDrag;
+    _cycleDrag=null;
+    cycleHideTip();
+    if(d.create){_cycleDraft=null;cycleLiveRender();return;}
+    if(d.k==='s'||d.k==='e')cycleRevertDrag(d);
   });
 }
-function addCyclePeriod(){
-  var s=document.getElementById('cStartTime').value;
-  var e=document.getElementById('cEndTime').value;
-  if(!s||!e){alert('请选择时间');return;}
-  var st=s.split(':'),et=e.split(':');
-  fetch('/api/cycle?add=1&sh='+st[0]+'&sm='+st[1]+'&eh='+et[0]+'&em='+et[1]).then(function(r){return r.json()}).then(function(d){
-    if(d.ok){update();}else{alert('最多3个时段');}
-  });
+function cycleCreateSave(s,e){
+  _cycleDraft=null;
+  if(_cyclePeriods.length>=CYCLE_MAX){cycleMsg('最多 '+CYCLE_MAX+' 个时段');cycleLiveRender();return;}
+  if(e>=s&&e-s<10){e=s+60;if(e>1440)e-=1440;}
+  var p={sh:Math.floor(s/60),sm:s%60,eh:Math.floor(e/60),em:e%60};
+  if(cycleOverlapIdx(p,-1)>=0){cycleMsg('与其他时段重叠');cycleLiveRender();return;}
+  fetch('/api/cycle?add=1&sh='+p.sh+'&sm='+p.sm+'&eh='+p.eh+'&em='+p.em)
+    .then(function(r){return r.json()})
+    .then(function(d2){
+      if(!d2.ok)cycleMsg('保存失败');
+      update();
+    })
+    .catch(function(){cycleMsg('网络错误');update();});
 }
-
+function cycleRevertDrag(d){
+  var p=_cyclePeriods[d.i];
+  if(p){p.sh=Math.floor(d.os/60);p.sm=d.os%60;p.eh=Math.floor(d.oe/60);p.em=d.oe%60;}
+  cycleLiveRender();
+}
+function cycleCommitDrag(d){
+  var p=_cyclePeriods[d.i];
+  if(!p)return;
+  var s=p.sh*60+p.sm,e=p.eh*60+p.em;
+  if(s===e){cycleRevertDrag(d);cycleMsg('起止时间不能相同');return;}
+  if(cycleOverlapIdx(p,d.i)>=0){cycleRevertDrag(d);cycleMsg('与其他时段重叠');return;}
+  fetch('/api/cycle?idx='+d.i+'&sh='+p.sh+'&sm='+p.sm+'&eh='+p.eh+'&em='+p.em)
+    .then(function(r){return r.json()})
+    .then(function(d2){if(!d2.ok)cycleMsg('保存失败');update();})
+    .catch(function(){cycleMsg('网络错误');update();});
+}
+function cycleEditIdx(i){
+  var p=_cyclePeriods[i];
+  if(!p)return;
+  cycleOpenEdit(i,p.sh*60+p.sm,p.eh*60+p.em);
+}
+function cycleReverse(i){
+  var p=_cyclePeriods[i];
+  if(!p)return;
+  var np={sh:p.eh,sm:p.em,eh:p.sh,em:p.sm};
+  if(cycleOverlapIdx(np,i)>=0){cycleMsg('反向后与其他时段重叠');return;}
+  fetch('/api/cycle?idx='+i+'&sh='+np.sh+'&sm='+np.sm+'&eh='+np.eh+'&em='+np.em)
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.ok)update();
+      else cycleMsg('保存失败');
+    })
+    .catch(function(){cycleMsg('网络错误');update();});
+}
+function cycleOpenEdit(i,s,e){
+  _cycleEditing=i;
+  document.getElementById('cycleEditTitle').textContent=(i<0)?'添加时段':'编辑时段 '+(i+1);
+  document.getElementById('ceStart').value=pad2(Math.floor(s/60))+':'+pad2(s%60);
+  document.getElementById('ceEnd').value=pad2(Math.floor(e/60))+':'+pad2(e%60);
+  document.getElementById('cycleEditDelBtn').style.display=(i<0)?'none':'block';
+  var err=document.getElementById('cycleEditErr');
+  err.style.display='none';
+  err.textContent='';
+  document.getElementById('cycleEditM').style.display='flex';
+}
+function cycleEditErr(t){
+  var err=document.getElementById('cycleEditErr');
+  if(!err)return;
+  err.textContent=t;
+  err.style.display='block';
+}
+function cycleEditCancel(){
+  document.getElementById('cycleEditM').style.display='none';
+}
+function cycleEditSave(){
+  var sV=document.getElementById('ceStart').value;
+  var eV=document.getElementById('ceEnd').value;
+  if(!sV||!eV){cycleEditErr('请选择开始和结束时间');return;}
+  var st=sV.split(':'),et=eV.split(':');
+  var p={sh:parseInt(st[0],10),sm:parseInt(st[1],10),eh:parseInt(et[0],10),em:parseInt(et[1],10)};
+  if(isNaN(p.sh)||isNaN(p.sm)||isNaN(p.eh)||isNaN(p.em)){cycleEditErr('时间格式无效');return;}
+  if(p.sh*60+p.sm===p.eh*60+p.em){cycleEditErr('开始与结束时间不能相同');return;}
+  var ov=cycleOverlapIdx(p,_cycleEditing);
+  if(ov>=0){cycleEditErr('与时段 '+(ov+1)+' 重叠，请调整');return;}
+  var url;
+  if(_cycleEditing<0){
+    if(_cyclePeriods.length>=CYCLE_MAX){cycleEditErr('最多 '+CYCLE_MAX+' 个时段');return;}
+    url='/api/cycle?add=1&sh='+p.sh+'&sm='+p.sm+'&eh='+p.eh+'&em='+p.em;
+  }else{
+    url='/api/cycle?idx='+_cycleEditing+'&sh='+p.sh+'&sm='+p.sm+'&eh='+p.eh+'&em='+p.em;
+  }
+  fetch(url).then(function(r){return r.json()}).then(function(d){
+    if(d.ok){document.getElementById('cycleEditM').style.display='none';update();}
+    else{cycleEditErr('保存失败'+(d.error?(':'+d.error):''));}
+  }).catch(function(){cycleEditErr('网络错误，请重试');});
+}
+function cycleEditDelete(){
+  if(_cycleEditing<0)return;
+  fetch('/api/cycle?remove='+_cycleEditing).then(function(r){return r.json()}).then(function(d){
+    document.getElementById('cycleEditM').style.display='none';
+    if(d.ok)update();
+  }).catch(function(){document.getElementById('cycleEditM').style.display='none';});
+}
 function removeCyclePeriod(idx){
   fetch('/api/cycle?remove='+idx).then(function(r){return r.json()}).then(function(d){
     if(d.ok)update();
   });
 }
-
-function renderCyclePeriods(cp){
+function cyclePowerBtnRender(en){
+  var pb=document.getElementById('cyclePowerBtn');
+  if(!pb)return;
+  if(en){
+    pb.textContent='关闭循环';
+    pb.style.background='#34c759';
+    pb.style.color='#fff';
+  }else{
+    pb.textContent='启用循环';
+    pb.style.background='#007aff';
+    pb.style.color='#fff';
+  }
+}
+function toggleCycle(){
+  var en=!_cycleEnabled;
+  if(en && _cycleCount===0){
+    cycleMsg('请先添加循环时段');
+    return;
+  }
+  fetch('/api/cycle?enabled='+en).then(function(r){return r.json()}).then(function(d){
+    cyclePowerBtnRender(!!d.enabled);
+    update();
+  });
+}
+function renderCyclePeriods(){
   var list=document.getElementById('cyclePeriodsList');
   if(!list)return;
+  _cycleCount=_cyclePeriods.length;
   list.innerHTML='';
-  if(!cp||cp.length===0)return;
-  for(var i=0;i<cp.length;i++){
-    var p=cp[i];
+  if(!_cyclePeriods.length){
+    var em=document.createElement('div');
+    em.className='cycle-empty';
+    em.textContent='暂无时段';
+    list.appendChild(em);
+    return;
+  }
+  for(var i=0;i<_cyclePeriods.length;i++){
+    var p=_cyclePeriods[i];
+    var col=CYCLE_COLORS[i%CYCLE_COLORS.length];
+    var cross=(p.sh*60+p.sm>p.eh*60+p.em);
     var div=document.createElement('div');
-    div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e5e5ea';
-    div.innerHTML='<span style="flex:1;font-size:14px">'+String(p.sh).padStart(2,'0')+':'+String(p.sm).padStart(2,'0')+' - '+String(p.eh).padStart(2,'0')+':'+String(p.em).padStart(2,'0')+'</span>'
-      +'<button class="timer-btn" style="width:auto;margin:0;padding:0 12px;height:28px;font-size:12px;background:#ff3b30" onclick="removeCyclePeriod('+i+')">删除</button>';
+    div.className='cycle-row';
+    div.innerHTML='<span class="period-dot" style="background:'+col+'"></span>'
+      +'<span style="flex:1;font-size:15px;font-weight:500;letter-spacing:.2px">'+pad2(p.sh)+':'+pad2(p.sm)+' – '+pad2(p.eh)+':'+pad2(p.em)+'</span>'
+      +(cross?'<span class="cycle-badge cycle-badge-tap" onclick="cycleReverse('+i+')" title="点击反向选择时段">↕ 跨天</span>':'')
+      +'<button class="cycle-txt-btn" style="color:#007aff" onclick="cycleEditIdx('+i+')">编辑</button>'
+      +'<button class="cycle-txt-btn" style="color:#ff3b30" onclick="removeCyclePeriod('+i+')">删除</button>';
     list.appendChild(div);
+  }
+}
+function updateCycleStatus(d){
+  var cs=document.getElementById('cycleStatus');
+  if(!cs)return;
+  if(!d.ce){
+    cs.textContent='未启用';
+    cs.style.color='#8e8e93';
+    return;
+  }
+  if(_cycleCount===0){
+    cs.textContent='已启用 · 未配置时段';
+    cs.style.color='#ff9500';
+    return;
+  }
+  if(!d.tv){
+    cs.textContent='已启用 · 等待NTP时间同步';
+    cs.style.color='#ff9500';
+    return;
+  }
+  var p=cyclePeriodForMinute(_cyclePeriods,d.cm);
+  if(p){
+    cs.textContent='运行中 · '+pad2(p.sh)+':'+pad2(p.sm)+'-'+pad2(p.eh)+':'+pad2(p.em);
+    cs.style.color='#34c759';
+  }else{
+    cs.textContent='已启用 · 当前为关闭时段';
+    cs.style.color='#007aff';
   }
 }
 
@@ -1974,12 +2366,17 @@ void WebConfigServer::init() {
         MQTTConfig mq = MQTTManager::getConfig();
         String apPass = WiFiManager::getAPPassword();
 
+        time_t nowTs = time(nullptr);
+        struct tm* tinfo = localtime(&nowTs);
+        bool timeValid = (tinfo && tinfo->tm_year > 100);
+        int curMins = timeValid ? (tinfo->tm_hour * 60 + tinfo->tm_min) : -1;
+
         snprintf(status_buf, sizeof(status_buf),
             "{\"conn\":%s,\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
             "\"ver\":\"%s\",\"up\":%lu,\"m\":%s,\"s\":%s,"
             "\"lk\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
             "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"rl\":%s,"
-            "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,"
+            "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,"
             "\"pe\":%s,\"pt\":%.2f,"
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
             "\"de\":%s,\"dt\":\"%s\",\"dl\":%s,\"dr\":%d,\"dm\":\"%s\",\"dp\":%s,\"pc\":%s,\"ds\":%d,\"ts\":%d,\"om\":%s,\"bd\":%s,"
@@ -2006,6 +2403,9 @@ void WebConfigServer::init() {
             GPIOManager::isRedLedEnabled() ? "true" : "false",
             GPIOManager::isCycleEnabled() ? "true" : "false",
             sh, sm, eh, em, GPIOManager::getCyclePeriodCount(),
+            GPIOManager::isCycleActive() ? "true" : "false",
+            timeValid ? "true" : "false",
+            curMins,
             GPIOManager::isPowerOffEnabled() ? "true" : "false",
             GPIOManager::getPowerOffThreshold(),
             GPIOManager::isBillingEnabled() ? "true" : "false",
@@ -2126,6 +2526,10 @@ void WebConfigServer::init() {
             uint8_t sm = server_->arg("sm").toInt();
             uint8_t eh = server_->arg("eh").toInt();
             uint8_t em = server_->arg("em").toInt();
+            if (sh > 23 || sm > 59 || eh > 23 || em > 59 || (sh == eh && sm == em)) {
+                server_->send(200, "application/json", "{\"ok\":false,\"error\":\"invalid period\"}");
+                return;
+            }
             bool ok = GPIOManager::addCyclePeriod(sh, sm, eh, em);
             server_->send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"max periods\"}");
             return;
@@ -2141,6 +2545,10 @@ void WebConfigServer::init() {
             uint8_t sm = server_->arg("sm").toInt();
             uint8_t eh = server_->arg("eh").toInt();
             uint8_t em = server_->arg("em").toInt();
+            if (sh > 23 || sm > 59 || eh > 23 || em > 59 || (sh == eh && sm == em)) {
+                server_->send(200, "application/json", "{\"ok\":false,\"error\":\"invalid period\"}");
+                return;
+            }
             uint8_t idx = server_->hasArg("idx") ? server_->arg("idx").toInt() : 0;
             GPIOManager::setCyclePeriod(idx, sh, sm, eh, em);
             server_->send(200, "application/json", "{\"ok\":true}");
