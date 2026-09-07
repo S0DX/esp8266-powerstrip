@@ -434,7 +434,12 @@ void loop() {
         last_print = millis();
 
         if (!SY7T609::isEnabled()) {
-            DBG_PRINTF("[Meter] Disabled, enable via Web UI\n");
+            // 仅状态变化时打印一次，避免禁用期每 3 秒刷屏污染系统日志
+            static bool meter_was_disabled = false;
+            if (!meter_was_disabled) {
+                meter_was_disabled = true;
+                DBG_PRINTF("[Meter] Disabled, enable via Web UI\n");
+            }
         } else if (SY7T609::isReady()) {
             DBG_PRINTF("--- Meter Data ---\n");
             DBG_PRINTF("Voltage:    %.1f V\n", SY7T609::getVoltage());
