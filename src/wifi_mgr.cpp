@@ -99,9 +99,9 @@ void WiFiManager::init() {
 // 当前功率较高时，需要信号明显改善才降级；当前功率较低时，信号明显恶化才升级
 static float computeTargetTxPower(int rssi, float current_power, bool limited) {
     const int HYSTERESIS_DB = 3;
-    // 未限制模式恢复 14dBm：10dBm 在隔墙场景信号弱导致 TCP 重传和页面加载失败
-    // BOD 风险已通过 flushPendingEEPROM 避让 WiFi 扫描 + EnergyManager 延迟提交缓解
-    float max_weak = limited ? 10.0f : 14.0f;
+    // 未限制模式恢复 14dBm；限制模式最弱档 12dBm（10dBm 在隔墙场景信号弱
+    // 导致 TCP 重传和页面加载失败，上调折中省电与稳定）
+    float max_weak = limited ? 12.0f : 14.0f;
 
     if (current_power <= 4.0f) {
         // 当前 4dBm：RSSI 变差到 -43 以下才升功率

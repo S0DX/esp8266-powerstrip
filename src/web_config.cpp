@@ -143,11 +143,13 @@ void WebConfigServer::init() {
                 if (n == 0) {
                     if (++failures >= 3) break;
                     delay(1);
+                    ESP.wdtFeed();  // 弱信号下阻塞受限于 deadline，喂狗防硬件看门狗复位
                     continue;
                 }
                 failures = 0;
                 sent += n;
                 yield();
+                ESP.wdtFeed();
             }
             log_req("pg-out");
         }
