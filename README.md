@@ -8,7 +8,7 @@
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
-[![Version](https://img.shields.io/badge/version-5.2-007aff?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-5.3-007aff?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
@@ -83,6 +83,7 @@
 - **页面 gzip 交付**（v5.2）：Web 页面预压缩为 gzip，Flash 占用降低约 8%，AP 直连首屏加载提速 3-4 倍
 - **AP + STA 双模式**：配置时不断开连接
 - **Web OTA 升级**：支持网页上传固件升级
+- **远程崩溃取证**（v5.3）：崩溃寄存器现场自动存 RTC，`/api/crashdump` 读取——设备装在墙上不用拆机也能定位崩溃，见「踩坑实录」
 - **加载动画超时保护**（v5.0）：fetch 5 秒超时 + 3 秒保底重试，避免页面卡在加载状态
 
 ### 其他
@@ -377,6 +378,7 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 | `/api/restart` | POST | 重启设备 |
 | `/api/reset` | POST | 恢复出厂 |
 | `/api/reset_energy` | POST | 清零电量记录 |
+| `/api/crashdump` | GET | 读取最近一次崩溃的寄存器现场（RTC 保存，见[踩坑实录](#踩坑实录lwip-奇地址-progmem-崩溃v52--v53)）|
 
 ## 技术细节
 
@@ -416,6 +418,40 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 - 串口波特率：115200
 - SY7T609 启用时：输出到 GPIO2 (Serial1)
 - SY7T609 禁用时：输出到 Serial (GPIO1)
+
+### 踩坑实录：lwIP 奇地址 PROGMEM 崩溃（v5.2 → v5.3）
+
+> 一次完整的"设备在用户手里、无串口、只有 HTTP"远程破案，经验适用于所有 ESP8266 大响应 Web 项目。
+
+**现象**（两个版本表现不同，实为同一根因）：
+- v5.2（gzip 上线后）：首页**概率性**卡在加载动画，遮罩层下只有静态卡片、数据为 `--`
+- 实验版（分块发送）：首页访问**必现**设备崩溃重启，页面停在 23160/23413 字节
+
+**取证过程**（无串口可用，全程远程）：
+1. Web OTA 部署带 `custom_crash_callback` 钩子的诊断固件——崩溃瞬间把 `rst_info` 寄存器现场（EPC1/EXCCAUSE/EXCVADDR + 栈顶 20 字）写入 RTC 用户内存（断电丢失、崩溃复位保留）
+2. 重启后 `GET /api/crashdump` 读出现场
+3. 用 `xtensa-lx106-elf-nm` / `addr2line` 对着 `firmware.elf` 解码：
+
+```
+exccause = 3 (LoadStoreError 非对齐访问)
+excvaddr = 0x4025A4A5  ← 正在读的地址（奇数！）
+nm: _ZL13INDEX_HTML_GZ = 0x4025A165  ← 数组基址就是奇数，excvaddr = 基址+832
+addr2line 栈回溯: ClientContext::_write_from_source → precache (lwIP 校验和预计算)
+```
+
+**根因**：链接器把 gzip 字节数组 `INDEX_HTML_GZ` 放在**奇数地址**，lwIP 发送路径的软件校验和（`precache`）对源数据做 **word 级对齐访问**，奇地址加载触发 `EXCCAUSE=3` 直接崩机。原版 `sendContent_P` 内部切分边界**概率踩中**（看似网络问题），分块版每块必踩（看似改坏了）——其实都是崩溃，不是网络。
+
+**修复**（[web_config.cpp](src/web_config.cpp)）：
+- 发送循环先 `memcpy_P` 到 **4 字节对齐的 RAM 缓冲**再交给 `WiFiClient::write`，对任何基址免疫
+- 生成脚本 [gen_page_gz.py](scripts/gen_page_gz.py) 给数组声明加 `aligned(4)` 纵深防御
+
+**经验总结**：
+1. **ESP8266 上 PROGMEM 字节数组永远不要直接交给 lwIP/TCP 发送**——先 `memcpy_P` 到对齐 RAM。`sendContent_P` 对字符串安全（逐字节读），但对任意二进制数据存在奇地址陷阱
+2. **"概率性网络故障"要怀疑崩溃**：页面截断 + 复位原因为 `Exception` 时，先查崩溃，再查网络
+3. **无串口的远程取证完全可行**：`custom_crash_callback` + RTC + `/api/crashdump` + Web OTA 组合拳，本次全程未碰串口
+4. **断点信息别扔**：崩溃现场的 `excvaddr` 指向的地址减去数据基址，能直接算出"崩在第几字节"——比看现象猜网络快得多
+
+**验证**：OTA 部署修复版后，5 次连续页面访问均 23413 字节完整送达，uptime 连续递增零重启。
 
 ## 目录结构
 
@@ -458,6 +494,7 @@ MIT License
 
 ## 版本历史
 
+- **v5.3** - 修复 Web 页面发送导致设备崩溃：gzip 字节数组被链接到奇数地址，lwIP 校验和做 word 级访问触发 `EXCCAUSE=3` 直接崩机（v5.2 起的概率性卡加载同根因）；发送改为 `memcpy_P` 到 4 对齐 RAM 缓冲 + 分块续传（兼修弱信号短写截断）；新增远程崩溃取证能力（`custom_crash_callback` + RTC + `/api/crashdump`，详见「踩坑实录」）
 - **v5.2** - 页面 gzip 交付：Web 页面预压缩（104KB→23KB，Flash -8%），AP 直连首屏加载提速；文档与代码同步（移除未实现的 UDP 广播章节、新增 24h 时间轴截图、版本号修正）
 - **v5.1** - 24小时循环重构：可视化 24 小时时间轴（拖拽创建/调整、轻点编辑、跨午夜、一键反向选择）；时段上限 3→6（EEPROM V3 自动迁移）；运行状态实时反馈行；时段重叠前后端双重校验；循环启用改为蓝/绿状态按钮；二级页面卡片按功能性/维护性重排；循环轮询不再覆盖输入框（修复时段设置失效）
 - **v5.0** - UI 重构：电费计算卡片移除（电价迁入计费供电、清零迁入系统设置、电量校准迁入更多设置电量检测卡片）；拔除断电合并到功耗优化；用电历史底部添加当前/本月/上月三数据项；加载动画超时修复（fetch 5s 超时 + 3s 保底重试）；mDNS 可靠性提升（begin 重试 3 次 + update 提频）；Captive Portal 跨平台兼容（Android/Windows 探测端点）；SY7T609 readRegister 状态机化（主循环零阻塞）；EEPROM 地址冲突修复与清理
