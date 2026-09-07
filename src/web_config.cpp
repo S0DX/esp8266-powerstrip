@@ -20,12 +20,55 @@ std::unique_ptr<ESP8266HTTPUpdateServer> httpUpdater_;
 std::unique_ptr<DNSServer> dnsServer_;
 void (*WebConfigServer::save_callback_)(const char*, const char*) = nullptr;
 
+// ===== 崩溃现场捕获（诊断用）=====
+// custom_crash_callback 是 core 的 weak 钩子（core_esp8266_postmortem.cpp），
+// 异常时在重启前被调用。把 rst_info 寄存器现场和栈顶快照写入 RTC 用户区
+// word 24 起（CrashLogRTC 占 word 0-21，测试区 word 100，互不冲突），
+// 重启后经 /api/crashdump 读出，用 addr2line 对 firmware.elf 解码定位。
+#define CRASH_DUMP_RTC_OFFSET 24
+#define CRASH_DUMP_MAGIC      0xD15EA5E5
+
+struct CrashDumpRTC {
+    uint32_t magic;
+    uint32_t reason;
+    uint32_t exccause;
+    uint32_t epc1, epc2, epc3;
+    uint32_t excvaddr;
+    uint32_t depc;
+    uint32_t sp;
+    uint32_t stack[20];
+};
+
+extern "C" void custom_crash_callback(struct rst_info* rst_info, uint32_t stack, uint32_t stack_end) {
+    static CrashDumpRTC d;
+    d.magic = CRASH_DUMP_MAGIC;
+    d.reason = rst_info->reason;
+    d.exccause = rst_info->exccause;
+    d.epc1 = rst_info->epc1;
+    d.epc2 = rst_info->epc2;
+    d.epc3 = rst_info->epc3;
+    d.excvaddr = rst_info->excvaddr;
+    d.depc = rst_info->depc;
+    d.sp = stack;
+    int n = 0;
+    for (uint32_t p = stack; p + 4 <= stack_end && n < 20; p += 4) {
+        d.stack[n++] = *(uint32_t*)p;
+    }
+    for (; n < 20; n++) d.stack[n] = 0;
+    ESP.rtcUserMemoryWrite(CRASH_DUMP_RTC_OFFSET, (uint32_t*)&d, sizeof(d));
+}
+
 // P0: Web 请求优先级机制
 volatile bool WebConfigServer::web_request_active_ = false;
 unsigned long WebConfigServer::web_request_start_ = 0;
 
 // /api/status 使用静态缓冲区，避免 1600 字节大数组压在栈上导致栈溢出
 static char status_buf[2048];
+
+// 页面发送缓冲：4 对齐 RAM 中转。lwIP precache 对源数据做 word 级访问，
+// PROGMEM 奇数基址会触发 EXCCAUSE=3 LoadStoreError 直接崩机（实测
+// INDEX_HTML_GZ 基址 0x4025A165），必须先拷入对齐 RAM 再交给 WiFiClient。
+static uint8_t page_send_buf[1024] __attribute__((aligned(4)));
 
 // P0: Web 请求优先级机制实现
 bool WebConfigServer::isWebRequestActive() {
@@ -71,9 +114,27 @@ void WebConfigServer::init() {
         server_->sendHeader("Content-Encoding", "gzip");
         server_->setContentLength(sizeof(INDEX_HTML_GZ));
         server_->send(200, "text/html; charset=UTF-8", "");
-        server_->sendContent_P((const char*)INDEX_HTML_GZ, sizeof(INDEX_HTML_GZ));
-        // 发送完成后让出 1ms，让 lwIP/TCP 栈有机会把数据真正推出去，
-        // 避免在弱信号或慢客户端场景下因缓冲区未排空导致页面空白/截断。
+        // 分块可靠发送：每块拷入 4 对齐 RAM 缓冲规避 lwIP 奇地址 word 访问崩溃，
+        // 按 write 返回值续传（每块独立超时窗口）解决弱信号下短写截断。
+        {
+            const size_t total = sizeof(INDEX_HTML_GZ);
+            const uint32_t deadline = millis() + 30000;
+            size_t sent = 0;
+            uint8_t failures = 0;
+            while (sent < total && failures < 3 && millis() < deadline) {
+                size_t chunk = total - sent > sizeof(page_send_buf) ? sizeof(page_send_buf) : total - sent;
+                memcpy_P(page_send_buf, (const uint8_t*)INDEX_HTML_GZ + sent, chunk);
+                size_t n = server_->client().write(page_send_buf, chunk);
+                if (n == 0) {
+                    if (++failures >= 3) break;
+                    delay(1);
+                    continue;
+                }
+                failures = 0;
+                sent += n;
+                yield();
+            }
+        }
         delay(1);
     });
 
@@ -679,6 +740,26 @@ void WebConfigServer::init() {
             }
         }
         json += "]}";
+        server_->send(200, "application/json", json);
+    });
+
+    // 崩溃现场读取（诊断用）：读 custom_crash_callback 写入 RTC 的寄存器快照
+    server_->on("/api/crashdump", HTTP_GET, []() {
+        CrashDumpRTC d;
+        memset(&d, 0, sizeof(d));
+        ESP.rtcUserMemoryRead(CRASH_DUMP_RTC_OFFSET, (uint32_t*)&d, sizeof(d));
+        char json[512];
+        int n = snprintf(json, sizeof(json),
+            "{\"magic\":\"%08X\",\"reason\":%u,\"exccause\":%u,"
+            "\"epc1\":\"%08X\",\"epc2\":\"%08X\",\"epc3\":\"%08X\","
+            "\"excvaddr\":\"%08X\",\"depc\":\"%08X\",\"sp\":\"%08X\",\"stack\":[",
+            (unsigned)d.magic, (unsigned)d.reason, (unsigned)d.exccause,
+            (unsigned)d.epc1, (unsigned)d.epc2, (unsigned)d.epc3,
+            (unsigned)d.excvaddr, (unsigned)d.depc, (unsigned)d.sp);
+        for (int i = 0; i < 20 && n > 0 && n < (int)sizeof(json) - 16; i++) {
+            n += snprintf(json + n, sizeof(json) - n, "%s\"%08X\"", i ? "," : "", (unsigned)d.stack[i]);
+        }
+        if (n > 0 && n < (int)sizeof(json) - 2) { json[n++] = ']'; json[n++] = '}'; json[n] = 0; }
         server_->send(200, "application/json", json);
     });
 
