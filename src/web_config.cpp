@@ -70,6 +70,20 @@ static char status_buf[2048];
 // INDEX_HTML_GZ 基址 0x4025A165），必须先拷入对齐 RAM 再交给 WiFiClient。
 static uint8_t page_send_buf[1024] __attribute__((aligned(4)));
 
+// ===== 请求级诊断日志（手机端卡死排查用）=====
+// 关键 handler 进出打点，环形缓冲最近 24 条，/api/reqlog 读取。
+// tag 约定：pg-in/pg-out=页面 rl-in/rl-out=继电器 st-in/st-out=状态
+#define REQ_LOG_N 64
+struct ReqLogEntry { uint32_t t; char tag[6]; };
+static ReqLogEntry req_log[REQ_LOG_N];
+static uint8_t req_log_idx = 0;
+static void log_req(const char* tag) {
+    strncpy(req_log[req_log_idx].tag, tag, 5);
+    req_log[req_log_idx].tag[5] = 0;
+    req_log[req_log_idx].t = millis();
+    req_log_idx = (uint8_t)((req_log_idx + 1) % REQ_LOG_N);
+}
+
 // P0: Web 请求优先级机制实现
 bool WebConfigServer::isWebRequestActive() {
     // 超时保护：50ms 后自动清除（防止死锁导致主循环永久跳过 SY7T609 读取）
@@ -107,6 +121,7 @@ void WebConfigServer::init() {
     dnsServer_->start(53, "*", WiFi.softAPIP());
 
     server_->on("/", HTTP_GET, []() {
+        log_req("pg-in");
         WiFiManager::boostTxPower();  // P1: 页面访问时临时提升功率
         server_->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         server_->sendHeader("Pragma", "no-cache");
@@ -134,6 +149,7 @@ void WebConfigServer::init() {
                 sent += n;
                 yield();
             }
+            log_req("pg-out");
         }
         delay(1);
     });
@@ -180,6 +196,7 @@ void WebConfigServer::init() {
     });
 
     server_->on("/api/status", HTTP_GET, []() {
+        log_req("st-in");
         WiFiManager::boostTxPower();  // P1: 状态查询时临时提升功率
         String ip = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
         uint8_t sh, sm, eh, em;
@@ -294,6 +311,7 @@ void WebConfigServer::init() {
             }
         }
         server_->send(200, "application/json", status_buf);
+        log_req("st-out");
     });
 
 
@@ -314,6 +332,7 @@ void WebConfigServer::init() {
     });
 
     server_->on("/api/relay", HTTP_GET, []() {
+        log_req("rl-in");
         String w = server_->arg("w");
         if (w == "m") {
             bool newState = !GPIOManager::getRelayMaster();
@@ -333,6 +352,7 @@ void WebConfigServer::init() {
         String response = "{\"m\":" + String(GPIOManager::getRelayMaster() ? "true" : "false") +
                           ",\"s\":" + String(GPIOManager::getRelaySlave() ? "true" : "false") + "}";
         server_->send(200, "application/json", response);
+        log_req("rl-out");
     });
 
     server_->on("/api/cycle", HTTP_GET, []() {
@@ -760,6 +780,22 @@ void WebConfigServer::init() {
             n += snprintf(json + n, sizeof(json) - n, "%s\"%08X\"", i ? "," : "", (unsigned)d.stack[i]);
         }
         if (n > 0 && n < (int)sizeof(json) - 2) { json[n++] = ']'; json[n++] = '}'; json[n] = 0; }
+        server_->send(200, "application/json", json);
+    });
+
+    // 请求级诊断日志读取（手机端卡死排查用）：见 log_req 打点
+    server_->on("/api/reqlog", HTTP_GET, []() {
+        String json = "{\"now\":" + String(millis()) + ",\"up\":" + String(millis() / 1000) +
+                      ",\"rst\":\"" + ESP.getResetReason() + "\",\"e\":[";
+        bool first = true;
+        for (uint8_t i = 0; i < REQ_LOG_N; i++) {
+            uint8_t idx = (req_log_idx + i) % REQ_LOG_N;
+            if (req_log[idx].tag[0] == 0) continue;
+            if (!first) json += ",";
+            first = false;
+            json += "{\"t\":" + String(req_log[idx].t) + ",\"tag\":\"" + req_log[idx].tag + "\"}";
+        }
+        json += "]}";
         server_->send(200, "application/json", json);
     });
 

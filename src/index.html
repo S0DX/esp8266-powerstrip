@@ -1074,13 +1074,14 @@ function tr(w){
   if(w=='m' && t && !t.classList.contains('on')){
     if(other) other.classList.remove('on');
   }
+  var _to=setTimeout(function(){_relayBusy=false;},5000);
   fetch('/api/relay?w='+w).then(function(r){return r.json()}).then(function(d){
     var rm=document.getElementById('rm');
     var rs=document.getElementById('rs');
     if(rm){if(d.m)rm.classList.add('on');else rm.classList.remove('on');}
     if(rs){if(d.s)rs.classList.add('on');else rs.classList.remove('on');}
   }).catch(function(e){console.log('Relay error:',e);})
-  .finally(function(){setTimeout(function(){_relayBusy=false;},300);});
+  .finally(function(){clearTimeout(_to);setTimeout(function(){_relayBusy=false;},300);});
 }
 
 function toggleMeter(){
