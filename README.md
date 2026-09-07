@@ -2,13 +2,13 @@
 
 # 🔌 智能插排固件
 
-### ESP8266 Smart Power Strip Firmware · v5.4
+### ESP8266 Smart Power Strip Firmware · v5.5
 
 <img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
-[![Version](https://img.shields.io/badge/version-5.3-007aff?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-5.5-007aff?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
@@ -297,7 +297,7 @@ v5.1 起按"功能性在前、维护性靠后"排序：
 - **计费供电**：电量/金额/时长阈值关闭，内置电价设置（v5.0 迁入）
 - **功耗优化**：拔除断电功率阈值配置（v5.0 合并自原"拔除断电设置"卡片）
 - **MQTT 代理**：服务器配置
-- **电量检测卡片**（v5.0 迁入）：电压/电流校准、恢复出厂校准、保存、清零电能
+- **电量检测卡片**（v5.0 迁入）：自动零点校准（默认自学习，空载约 4 秒完成，消除负功率）；电压/电流手动校准、恢复出厂校准、保存、清零电能（v5.5 起功率始终采用芯片有功功率）
 - **主页卡片排序**：拖拽调整卡片顺序和显示
 - **局域网域名**：mDNS 域名自定义
 - **系统设置**：清零历史电量/电费记录、恢复出厂（v5.0 迁入清零功能）
@@ -514,6 +514,7 @@ MIT License
 
 ## 版本历史
 
+- **v5.5** - 功率计算重构：始终采用芯片有功功率（含功率因数语义），新增**空载自动零点校正**自动消除空载/采样零漂导致的负功率与虚高；不再退回 V×I 视在功率。默认自动、免手动校准，空载约 4 秒后完成，UI 显示"自动校准完成"绿色状态；隐藏全局滚动条
 - **v5.4** - 修复手机端按钮"卡死无响应"：iOS 挂起页面时在途 fetch 可能永不回调，`_relayBusy` 防抖锁无超时兜底导致永久假死；加 5 秒强制解锁。新增请求级诊断日志（`/api/reqlog`），详见「踩坑实录二」
 - **v5.3** - 修复 Web 页面发送导致设备崩溃：gzip 字节数组被链接到奇数地址，lwIP 校验和做 word 级访问触发 `EXCCAUSE=3` 直接崩机（v5.2 起的概率性卡加载同根因）；发送改为 `memcpy_P` 到 4 对齐 RAM 缓冲 + 分块续传（兼修弱信号短写截断）；新增远程崩溃取证能力（`custom_crash_callback` + RTC + `/api/crashdump`，详见「踩坑实录」）
 - **v5.2** - 页面 gzip 交付：Web 页面预压缩（104KB→23KB，Flash -8%），AP 直连首屏加载提速；文档与代码同步（移除未实现的 UDP 广播章节、新增 24h 时间轴截图、版本号修正）

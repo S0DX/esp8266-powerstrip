@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.4"
+#define VERSION "5.5"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -77,6 +77,8 @@
 // SY7T609 电量检测 EEPROM
 #define EEPROM_SY7T609_ENABLED_ADDR       210  // 1 byte: 0=禁用, 1=启用
 #define EEPROM_SY7T609_FLASH_MODE_ADDR    211  // 1 byte: 0xAA=flash 模式
+#define EEPROM_SY7T609_CALIB_FLAG_ADDR    212  // 1 byte: 0x43='C' 已完成校准（功率改用芯片有功功率）
+#define EEPROM_SY7T609_CALIB_MAGIC        0x43
 
 // 计费供电 EEPROM 存储区域（214-217, 290-387）
 #define EEPROM_BILLING_ENABLED_ADDR        214  // 1 byte

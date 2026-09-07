@@ -77,6 +77,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .time-picker{display:flex;align-items:center;justify-content:center;height:180px;position:relative;background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden}
 .time-picker-column{flex:1;height:100%;position:relative;overflow-y:scroll;-webkit-overflow-scrolling:touch;scroll-snap-type:y mandatory;text-align:center}
 .time-picker-column::-webkit-scrollbar{display:none}
+/* iOS 风格：隐藏全局垂直滚动条（内容仍可滚动） */
+::-webkit-scrollbar{width:0;height:0;display:none}
+*{scrollbar-width:none;-ms-overflow-style:none}
 .time-picker-items{padding:72px 0}
 .time-picker-item{height:36px;line-height:36px;font-size:20px;color:#1c1c1e;scroll-snap-align:center;transition:opacity .15s,color .15s;opacity:.2}
 .time-picker-item.active{opacity:1;font-weight:600}
@@ -155,7 +158,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="grid-item"><div class="val" id="mI">--</div><div class="lbl">电流(A)</div></div>
 </div>
 <div class="grid">
-<div class="grid-item"><div class="val" id="mP">--</div><div class="lbl">功率(W)</div></div>
+<div class="grid-item"><div class="val" id="mP">--</div><div class="lbl" id="mPl">功率(W)</div></div>
 <div class="grid-item"><div class="val" id="mE">--</div><div class="lbl">用电量(kWh)</div></div>
 </div>
 </div>
@@ -457,7 +460,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 
 <div class="card">
 <div class="card-title">电量检测卡片</div>
-<p style="font-size:11px;color:#8e8e93;margin:4px 0 12px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 8px">校准前请确保万用表已就位，校准期间设备会阻塞 1-2 秒</p>
+<div id="calibState" style="font-size:11px;margin:0 0 12px;padding:8px 12px;border-radius:10px;background:#f2f2f7;color:#8e8e93"></div>
 <div style="margin-bottom:12px">
 <div style="font-size:13px;color:#8e8e93;margin-bottom:6px">电压校准（实测 V）</div>
 <div style="display:flex;gap:8px;align-items:center">
@@ -639,6 +643,8 @@ function update(){
     var mV=document.getElementById('mV'); if(mV) mV.textContent=d.me?(d.v!==undefined?d.v:'--'):'--';
     var mI=document.getElementById('mI'); if(mI) mI.textContent=d.me?(d.i!==undefined?d.i:'--'):'--';
     var mP=document.getElementById('mP'); if(mP) mP.textContent=d.me?(d.p!==undefined?d.p:'--'):'--';
+    var mPl=document.getElementById('mPl'); if(mPl) mPl.textContent='功率(W)';
+    var csEl=document.getElementById('calibState'); if(csEl){csEl.textContent=d.me?(d.cal?'自动校准完成':'自动零点自学习中 · 保持空载片刻'):'电量检测未启用';csEl.style.background=(d.me&&d.cal)?'#34c759':'#f2f2f7';csEl.style.color=(d.me&&d.cal)?'#ffffff':'#8e8e93';}
     var mE=document.getElementById('mE'); if(mE) mE.textContent=d.me?(d.e!==undefined?(d.e/1000).toFixed(2):'--'):'--';
     var mt=document.getElementById('mt'); if(mt){if(d.me)mt.classList.add('on');else mt.classList.remove('on');}
     // 快速倒计时卡片：iOS 风格滚动选择器（小时 + 分钟）

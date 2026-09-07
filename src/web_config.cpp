@@ -213,7 +213,7 @@ void WebConfigServer::init() {
             "{\"conn\":%s,\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
             "\"ver\":\"%s\",\"up\":%lu,\"m\":%s,\"s\":%s,"
             "\"lk\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
-            "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"rl\":%s,"
+            "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"cal\":%s,\"rl\":%s,"
             "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,"
             "\"pe\":%s,\"pt\":%.2f,"
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
@@ -238,6 +238,7 @@ void WebConfigServer::init() {
             SY7T609::getPower(),
             EnergyManager::getTotalEnergy(),
             SY7T609::isEnabled() ? "true" : "false",
+            SY7T609::isOffsetLearned() ? "true" : "false",
             GPIOManager::isRedLedEnabled() ? "true" : "false",
             GPIOManager::isCycleEnabled() ? "true" : "false",
             sh, sm, eh, em, GPIOManager::getCyclePeriodCount(),

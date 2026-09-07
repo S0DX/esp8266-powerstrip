@@ -18,6 +18,10 @@ public:
     static float getFrequency();
     static float getTemperature();
 
+    static bool isCalibrated();
+    static float getPowerOffset();  // 空载自学习出的功率零点偏移（W），供 UI 展示
+    static bool isOffsetLearned();  // 是否已完成一次空载零点自学习
+
     static void setEnabled(bool enabled);
     static bool isEnabled();
     static bool isFlashMode();
@@ -45,6 +49,7 @@ private:
     static bool ready_;
     static bool enabled_;
     static bool flash_mode_;
+    static bool calibrated_;
     static bool gpio0_checked_;
     static unsigned long start_time_;
     static float voltage_;
@@ -72,6 +77,19 @@ private:
     static bool sendCommand(uint16_t addr, uint32_t value);
     static bool readRegister(uint16_t addr, uint32_t* value);  // 同步阻塞，仅供 setup/校准使用
     static bool initializeSY7T609();
+
+    // 自动零漂自学习：检测到长时间稳定空载时，自动学习电流零漂与功率零点
+    // 偏移并扣减，免手动校准。空载无大功率电感、真实有功≈0，是唯一的
+    // "零点已知"时刻，可安全反推芯片读数偏置。current_ 始终保存原始读数。
+    static float current_offset_;      // 电流零漂偏移（A）
+    static float power_offset_;        // 功率零点偏移（W），空载芯片有功读数稳态值
+    static bool  offset_learned_;      // 是否已完成一次空载零点自学习
+    static bool  offset_learning_;     // 正在空载采样
+    static unsigned long offset_learn_start_;
+    static float offset_learn_min_;    // 空载窗口内电流最小值
+    static float offset_learn_pow_sum_;// 空载窗口内功率累加
+    static int   offset_learn_pow_cnt_;
+    static void applyOffsetLearning(float rawA);  // 由 commitReadResult 对 IRMS 调用
 
     // P3: 非阻塞状态机（仅供 handle() 使用，彻底消除 100ms 主循环阻塞）
     enum ReadFSMState { FSM_IDLE, FSM_WAITING };

@@ -8,6 +8,7 @@ HardwareSerial* SY7T609::serial_ = nullptr;
 bool SY7T609::ready_ = false;
 bool SY7T609::enabled_ = true;
 bool SY7T609::flash_mode_ = false;
+bool SY7T609::calibrated_ = false;
 bool SY7T609::gpio0_checked_ = false;
 unsigned long SY7T609::start_time_ = 0;
 float SY7T609::voltage_ = 0.0f;
@@ -50,6 +51,23 @@ float SY7T609::power_scale_ = 1000.0f;
 float SY7T609::pf_scale_ = 1000.0f;
 float SY7T609::frequency_scale_ = 1000.0f;
 float SY7T609::temperature_scale_ = 1000.0f;
+
+// 自动零漂自学习状态
+float SY7T609::current_offset_ = 0.0f;
+float SY7T609::power_offset_ = 0.0f;
+bool  SY7T609::offset_learned_ = false;
+bool  SY7T609::offset_learning_ = false;
+unsigned long SY7T609::offset_learn_start_ = 0;
+float SY7T609::offset_learn_min_ = 1000.0f;
+float SY7T609::offset_learn_pow_sum_ = 0.0f;
+int   SY7T609::offset_learn_pow_cnt_ = 0;
+
+// 零漂自学习参数
+#define OFFSET_LEARN_BAND_A  0.035f   // 电流低于此值视为"空载"（含零漂+容性漏流）
+#define OFFSET_MIN_STABLE_MS 4000     // 空载需稳定持续的时间（ms）
+#define OFFSET_MAX_A         0.09f    // 电流偏移上限，防止把真实小负载误学成偏移
+#define OFFSET_LERP_RATE     0.10f    // 偏移缓慢逼近速率（防跳变）
+#define OFFSET_POW_MAX_W     3.0f     // 功率偏移上限（空载芯片有功读数远小于此）
 
 bool g_meter_enabled = false;
 
@@ -368,6 +386,52 @@ bool SY7T609::pollReadFSM() {
     return true;
 }
 
+// P3: 自动零漂自学习（对每次 IRMS 原始读数调用）
+// 空载无大功率电感、真实有功功率≈0，是唯一的"零点已知"时刻。检测到长时间
+// 稳定空载时，自动学习两个偏移并在读取时扣减：
+//   1. current_offset_：电流零漂/容性漏流（A）
+//   2. power_offset_  ：芯片有功功率零点的读数偏置（W），解决空载负功率
+void SY7T609::applyOffsetLearning(float rawA) {
+    float loadI = rawA - current_offset_;  // 更纯的空载判据（规避已学的电流偏移）
+    if (loadI < OFFSET_LEARN_BAND_A) {
+        // 处于空载区间：累积窗口，追踪电流最小值、汇总功率
+        if (!offset_learning_) {
+            offset_learning_ = true;
+            offset_learn_start_ = millis();
+            offset_learn_min_ = rawA;
+            offset_learn_pow_sum_ = power_;
+            offset_learn_pow_cnt_ = 1;
+        } else {
+            if (rawA < offset_learn_min_) offset_learn_min_ = rawA;
+            offset_learn_pow_sum_ += power_;
+            offset_learn_pow_cnt_++;
+            // 稳定空载持续足够久，才计入偏移。空载窗口经电流阈值+时长双重过滤，
+            // 采样可信，直接赋值以免 lerp 收敛过慢导致 UI 长期停留在"自学习中"。
+            if (millis() - offset_learn_start_ >= OFFSET_MIN_STABLE_MS) {
+                // 电流零漂用窗口最小值（最接近真零漂）
+                if (offset_learn_min_ < OFFSET_MAX_A) {
+                    current_offset_ = offset_learn_min_;
+                    if (current_offset_ < 0.0f) current_offset_ = 0.0f;
+                }
+                // 功率零点偏移用空载芯片有功读数的均值（真实有功≈0，均值即偏置）
+                float meanPow = offset_learn_pow_sum_ / offset_learn_pow_cnt_;
+                if (meanPow > -OFFSET_POW_MAX_W && meanPow < OFFSET_POW_MAX_W) {
+                    power_offset_ = meanPow;
+                }
+                // 滚动窗口继续追踪可能更低的空载值
+                offset_learn_start_ = millis();
+                offset_learn_min_ = rawA;
+                offset_learn_pow_sum_ = power_;
+                offset_learn_pow_cnt_ = 1;
+                offset_learned_ = true;
+            }
+        }
+    } else {
+        // 出现真实负载，停止学习
+        offset_learning_ = false;
+    }
+}
+
 // P3: 处理读取结果（解析 + debug log + 推进 item）
 void SY7T609::commitReadResult(bool ok) {
     const MeasurementItem& item = items_[current_item_];
@@ -382,6 +446,10 @@ void SY7T609::commitReadResult(bool ok) {
                 break;
             case PARSE_NONE:
                 break;
+        }
+        // 对 IRMS 原始读数做零漂自学习（必须在扣减偏移之前）
+        if (item.addr == ADDR_IRMS) {
+            applyOffsetLearning(current_);
         }
         // 简化的 debug 日志（仅前 20 次）
         if (debug_log_count_ < 20) {
@@ -451,7 +519,9 @@ void SY7T609::loadFromEEPROM() {
     } else {
         enabled_ = (val == 1);
     }
-    Serial.printf("[SY7T609] Loaded from EEPROM: %s\n", enabled_ ? "enabled" : "disabled");
+    calibrated_ = (EEPROM.read(EEPROM_SY7T609_CALIB_FLAG_ADDR) == EEPROM_SY7T609_CALIB_MAGIC);
+    Serial.printf("[SY7T609] Loaded from EEPROM: %s, calibrated: %s\n",
+                  enabled_ ? "enabled" : "disabled", calibrated_ ? "yes" : "no");
 }
 
 void SY7T609::saveToEEPROM() {
@@ -519,7 +589,11 @@ bool SY7T609::resetCalibration() {
     // 保存到芯片 flash
     bool ok = saveCalibration();
     if (ok) {
-        Serial.println(F("[SY7T609] Calibration reset complete"));
+        // 恢复原厂常量后相位/增益误差依旧存在，功率退回 V×I 估算
+        calibrated_ = false;
+        EEPROM.write(EEPROM_SY7T609_CALIB_FLAG_ADDR, 0);
+        EEPROM.commit();
+        Serial.println(F("[SY7T609] Calibration reset complete, power source: V*I"));
     }
     return ok;
 }
@@ -548,7 +622,12 @@ bool SY7T609::calibrateVoltage(float realV) {
     ESP.wdtFeed();
 
     // 3. 保存到芯片 flash
-    return saveCalibration();
+    if (!saveCalibration()) return false;
+    calibrated_ = true;
+    EEPROM.write(EEPROM_SY7T609_CALIB_FLAG_ADDR, EEPROM_SY7T609_CALIB_MAGIC);
+    EEPROM.commit();
+    Serial.println(F("[SY7T609] Calibration flag set, power source: chip active power"));
+    return true;
 }
 
 bool SY7T609::calibrateCurrent(float realA) {
@@ -575,7 +654,12 @@ bool SY7T609::calibrateCurrent(float realA) {
     ESP.wdtFeed();
 
     // 3. 保存到芯片 flash
-    return saveCalibration();
+    if (!saveCalibration()) return false;
+    calibrated_ = true;
+    EEPROM.write(EEPROM_SY7T609_CALIB_FLAG_ADDR, EEPROM_SY7T609_CALIB_MAGIC);
+    EEPROM.commit();
+    Serial.println(F("[SY7T609] Calibration flag set, power source: chip active power"));
+    return true;
 }
 
 bool SY7T609::clearEnergyCounter() {
@@ -590,12 +674,29 @@ bool SY7T609::clearEnergyCounter() {
     return true;
 }
 
+// 交流空载死区：零漂自学习基础上再兜底，电流仍极低时强制归零（防极端毛刺）
+#define SY7T609_IRMS_DEADZONE_A 0.002f
+
 float SY7T609::getVoltage() { return voltage_; }
-float SY7T609::getCurrent() { return current_; }
-float SY7T609::getPower() { return power_; }
+float SY7T609::getCurrent() {
+    // 扣减自动学习的电流零漂偏移；current_ 始终为原始读数
+    float v = current_ - current_offset_;
+    return v < 0.0f ? 0.0f : v;
+}
+float SY7T609::getPower() {
+    // 始终采用芯片有功功率（含功率因数语义、稳定）。空载时芯片读数存在
+    // 加性零点偏置（可能为负），由空载自学习出的 power_offset_ 扣除；
+    // 电流死区仅兜底极端毛刺，避免空载小抖动。
+    float p = power_ - power_offset_;
+    if (getCurrent() < SY7T609_IRMS_DEADZONE_A) p = 0.0f;
+    return p;
+}
+float SY7T609::getPowerOffset() { return power_offset_; }
+bool SY7T609::isOffsetLearned() { return offset_learned_; }
 float SY7T609::getPowerFactor() { return power_factor_; }
 float SY7T609::getFrequency() { return frequency_; }
 float SY7T609::getTemperature() { return temperature_; }
+bool SY7T609::isCalibrated() { return calibrated_; }
 
 String SY7T609::getDebugLog() {
     return debug_log_;
