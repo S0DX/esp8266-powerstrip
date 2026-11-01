@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include "sy7t609.h"
 #include "mqtt_mgr.h"
+#include "time_mgr.h"
 #include <EEPROM.h>
 #include <WiFiClient.h>
 #include <ESP8266HTTPUpdateServer.h>
@@ -206,10 +207,19 @@ void WebConfigServer::init() {
         MQTTConfig mq = MQTTManager::getConfig();
         String apPass = WiFiManager::getAPPassword();
 
-        time_t nowTs = time(nullptr);
+        time_t nowTs = TimeManager::now();
         struct tm* tinfo = localtime(&nowTs);
-        bool timeValid = (tinfo && tinfo->tm_year > 100);
-        int curMins = timeValid ? (tinfo->tm_hour * 60 + tinfo->tm_min) : -1;
+        bool timeValid = TimeManager::isValid();
+        bool tmOk = (tinfo && tinfo->tm_year >= 100);
+        bool clockOk = timeValid && tmOk;
+        int curMins = clockOk ? (tinfo->tm_hour * 60 + tinfo->tm_min) : -1;
+        char timeStr[12];
+        if (clockOk) {
+            snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d",
+                     tinfo->tm_hour, tinfo->tm_min, tinfo->tm_sec);
+        } else {
+            snprintf(timeStr, sizeof(timeStr), "--:--:--");
+        }
 
         snprintf(status_buf, sizeof(status_buf),
             "{\"conn\":%s,\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
@@ -217,6 +227,7 @@ void WebConfigServer::init() {
             "\"lk\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
             "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"cal\":%s,\"rl\":%s,"
             "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,"
+            "\"tstr\":\"%s\",\"tsrc\":%d,\"tage\":%lu,"
             "\"pe\":%s,\"pt\":%.2f,"
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
             "\"de\":%s,\"dt\":\"%s\",\"dl\":%s,\"dr\":%d,\"dm\":\"%s\",\"dp\":%s,\"pc\":%s,\"ds\":%d,\"ts\":%d,\"om\":%s,\"bd\":%s,"
@@ -247,6 +258,9 @@ void WebConfigServer::init() {
             GPIOManager::isCycleActive() ? "true" : "false",
             timeValid ? "true" : "false",
             curMins,
+            timeStr,
+            (int)TimeManager::source(),
+            (unsigned long)TimeManager::syncAgeSec(),
             GPIOManager::isPowerOffEnabled() ? "true" : "false",
             GPIOManager::getPowerOffThreshold(),
             GPIOManager::isBillingEnabled() ? "true" : "false",
@@ -959,26 +973,50 @@ void WebConfigServer::init() {
         server_->send(200, "application/json", json);
     });
 
+    // 浏览器校时入口：优先级低于 NTP。
+    // - 已联网且 NTP 同步完成 → 拒绝（ok:false, reason:"ntp"）
+    // - 离线 / NTP 不可达 → 采用（ok:true, reason:"browser"）
+    // ?ts=<unix UTC 秒> 为校时；不带参数则查询当前时间源状态。
     server_->on("/api/time", HTTP_GET, []() {
-        if (server_->hasArg("ts")) {
-            time_t ts = server_->arg("ts").toInt();
-            struct timeval tv = { .tv_sec = ts, .tv_usec = 0 };
-            settimeofday(&tv, NULL);
-            configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+        if (!server_->hasArg("ts")) {
+            char buf[96];
+            snprintf(buf, sizeof(buf),
+                "{\"ok\":true,\"valid\":%s,\"src\":%d,\"age\":%lu,\"ntp\":%s}",
+                TimeManager::isValid() ? "true" : "false",
+                (int)TimeManager::source(),
+                (unsigned long)TimeManager::syncAgeSec(),
+                TimeManager::ntpAvailable() ? "true" : "false");
+            server_->send(200, "application/json", buf);
+            return;
         }
-        server_->send(200, "text/plain", "OK");
+        time_t ts = (time_t)strtoul(server_->arg("ts").c_str(), nullptr, 10);
+        const char* reason = "";
+        bool ok = TimeManager::applyBrowserTime(ts, &reason);
+        char buf[96];
+        snprintf(buf, sizeof(buf), "{\"ok\":%s,\"src\":%d,\"reason\":\"%s\"}",
+                 ok ? "true" : "false", (int)TimeManager::source(), reason);
+        server_->send(200, "application/json", buf);
     });
 
     server_->on("/api/now", HTTP_GET, []() {
-        time_t now = time(nullptr);
+        time_t now = TimeManager::now();
         struct tm* timeinfo = localtime(&now);
-        char buf[64];
-        if (timeinfo && timeinfo->tm_year >= 100) {
-            snprintf(buf, sizeof(buf), "{\"ok\":true,\"hour\":%d,\"min\":%02d,\"str\":\"%02d:%02d\"}",
+        char buf[200];
+        if (TimeManager::isValid() && timeinfo && timeinfo->tm_year >= 100) {
+            snprintf(buf, sizeof(buf),
+                "{\"ok\":true,\"hour\":%d,\"min\":%d,\"sec\":%d,"
+                "\"str\":\"%02d:%02d\",\"tstr\":\"%02d:%02d:%02d\","
+                "\"unix\":%lu,\"src\":%d,\"valid\":true,\"age\":%lu}",
+                timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
                 timeinfo->tm_hour, timeinfo->tm_min,
-                timeinfo->tm_hour, timeinfo->tm_min);
+                timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+                (unsigned long)now, (int)TimeManager::source(),
+                (unsigned long)TimeManager::syncAgeSec());
         } else {
-            snprintf(buf, sizeof(buf), "{\"ok\":false,\"str\":\"--:--\"}");
+            snprintf(buf, sizeof(buf),
+                "{\"ok\":false,\"str\":\"--:--\",\"tstr\":\"--:--:--\","
+                "\"unix\":0,\"src\":%d,\"valid\":false,\"age\":0}",
+                (int)TimeManager::source());
         }
         server_->send(200, "application/json", buf);
     });

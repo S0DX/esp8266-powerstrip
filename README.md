@@ -2,13 +2,13 @@
 
 # 🔌 智能插排固件
 
-### ESP8266 Smart Power Strip Firmware · v5.5
+### ESP8266 Smart Power Strip Firmware · v5.6
 
 <img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
-[![Version](https://img.shields.io/badge/version-5.5-007aff?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-5.6-007aff?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
@@ -383,6 +383,49 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 
 ## 技术细节
 
+### 时间同步与时钟（v5.6）
+
+设备时间只有一个出口 `TimeManager`，时间源按固定优先级仲裁：
+
+| 优先级 | 时间源 | 生效条件 | 界面表现 |
+| :---: | --- | --- | --- |
+| 1 | **NTP 联网自动校时** | STA 已连接且 SNTP 收到任一台服务器响应 | 右上角时钟灰色，标题「已联网自动校时」 |
+| 2 | **浏览器手动校正** | 离线、或联网但 NTP 不可达（设备时间仍无效） | 右上角时钟橙色，标题「已用手机浏览器时间校正」 |
+| 0 | 未校时 | 断电重启后尚未完成上述任一校时 | 显示 `--:--`，橙色提示，24 小时循环暂不动作 |
+
+**优先级切换逻辑**
+
+- NTP 一旦可用，浏览器校时请求会被直接拒绝（`/api/time` 返回 `reason:"ntp"`），避免手机时钟误差污染准确时间；
+- 网络断开时 `ntpAvailable()` 立即转 false，浏览器校时重新可用（用于长期离线后的漂移修正）；
+- 网络恢复后自动重新请求 NTP，同步成功后时间源自动切回 NTP，无需人工干预；
+- 首次同步失败（DNS 未就绪、服务器不可达）每 60 秒重试，服务器顺序：`ntp.aliyun.com` → `cn.pool.ntp.org` → `time.nist.gov`。
+
+**离线本地计时**
+
+- 校时成功后，系统 RTC 基于 `micros64() + timeshift` 持续走时，**断网不影响计时**，定时器、倒计时、24 小时循环照常工作，无需全程联网；
+- 离线期间时间源仍标记为最后一次校时的来源，界面可据此提示"时间来自上次 NTP"；
+- 长期离线会有正常晶振漂移，可点击右上角时钟用手机时间手动修正。
+
+**断电重启后的时间恢复**
+
+```
+上电 → TimeManager::init()：时间源置为 NONE，不读取任何持久化时间
+     → 曾配置过 WiFi：自动连接 → 连接成功触发 NTP 请求（1~3 秒完成）
+     → 连上但 NTP 失败：保持未校时，页面检测到 tv=false 自动用浏览器时间填充
+     → 纯离线（仅 AP 配网）：时钟显示 --:--，等待浏览器校时
+```
+
+设备**不持久化时间戳**：每次断电重启都必须重新获取时间，从机制上杜绝"带着停摆的旧时钟上电"导致的定时任务误触发。唯一例外是断电前的配置（如时段、阈值）仍保存在 EEPROM，时间本身不保存。
+
+**相关接口**
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/now` | 当前设备时间：`tstr`(HH:MM:SS)、`src`、`valid`、`age`(距校时秒数) |
+| `GET /api/time?ts=<unix>` | 浏览器校时；返回 `ok` 与 `reason`（`browser` / `ntp` / `invalid`） |
+| `GET /api/time` | 查询时间源状态（不带 `ts` 参数） |
+| `GET /api/status` | 新增 `tstr` / `tsrc` / `tage` 字段，供首页时钟与 24h 循环判断 |
+
 ### EEPROM 存储布局（v5.0）
 
 | 地址 | 字节 | 功能 |
@@ -514,6 +557,7 @@ MIT License
 
 ## 版本历史
 
+- **v5.6** - 时间同步重构：统一 `TimeManager` 时间出口，NTP 联网校时优先、浏览器手动校正回退（NTP 可用时拒绝浏览器覆盖）；新增首页右上角设备时钟（本地每秒推进，按时间源区分颜色）；离线时系统 RTC 持续计时不影响定时/24h 循环；断电不持久化时间，重启必须重新校时；24h 循环增加时间有效性门控，未校时时不动作
 - **v5.5** - 功率计算重构：始终采用芯片有功功率（含功率因数语义），新增**空载自动零点校正**自动消除空载/采样零漂导致的负功率与虚高；不再退回 V×I 视在功率。默认自动、免手动校准，空载约 4 秒后完成，UI 显示"自动校准完成"绿色状态；隐藏全局滚动条
 - **v5.4** - 修复手机端按钮"卡死无响应"：iOS 挂起页面时在途 fetch 可能永不回调，`_relayBusy` 防抖锁无超时兜底导致永久假死；加 5 秒强制解锁。新增请求级诊断日志（`/api/reqlog`），详见「踩坑实录二」
 - **v5.3** - 修复 Web 页面发送导致设备崩溃：gzip 字节数组被链接到奇数地址，lwIP 校验和做 word 级访问触发 `EXCCAUSE=3` 直接崩机（v5.2 起的概率性卡加载同根因）；发送改为 `memcpy_P` 到 4 对齐 RAM 缓冲 + 分块续传（兼修弱信号短写截断）；新增远程崩溃取证能力（`custom_crash_callback` + RTC + `/api/crashdump`，详见「踩坑实录」）

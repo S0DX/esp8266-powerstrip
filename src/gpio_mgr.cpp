@@ -6,6 +6,7 @@
 #include "mqtt_mgr.h"
 #include "energy_mgr.h"
 #include "wifi_mgr.h"
+#include "time_mgr.h"
 
 bool GPIOManager::relay_master_state_ = false;
 bool GPIOManager::relay_slave_state_ = false;
@@ -742,8 +743,9 @@ void GPIOManager::handleTimer() {
     }
 
     // 24小时间段循环开启任务 (需要 NTP 完成同步后有效，与定时器互斥)
-    if (cycle_enabled_ && !timer_running_ && cycle_period_count_ > 0) {
-        time_t now = time(nullptr);
+    // 断电重启后时间未校时（isValid()==false）时整段跳过，避免用 1970 年时间误判时段
+    if (cycle_enabled_ && !timer_running_ && cycle_period_count_ > 0 && TimeManager::isValid()) {
+        time_t now = TimeManager::now();
         struct tm* timeinfo = localtime(&now);
 
         if (timeinfo && timeinfo->tm_year > 100) {

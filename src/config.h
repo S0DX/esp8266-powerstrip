@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.5"
+#define VERSION "5.6"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -109,6 +109,18 @@
 // MQTT 配置新版地址（648-724）
 #define EEPROM_MQTT_CONFIG_ADDR             648 // 77 bytes
 #define EEPROM_MQTT_MAGIC_ADDR_OLD          316 // 旧布局，仅用于迁移
+
+// ===== 时间同步参数 =====
+// 时区固定东八区（CST-8），与 configTime 的第二/三参数语义保持一致
+#define TIME_TZ_OFFSET_SEC       (8 * 3600)
+// 早于 2023-11-14 的时间视为"未校时"（设备掉电后系统时钟从 0 起算）
+#define TIME_VALID_MIN_UNIX      1700000000UL
+// NTP 首次同步失败后的重试间隔
+#define NTP_RESYNC_RETRY_MS      60000UL
+// NTP 服务器：国内可达优先，国外地址仅作兜底
+#define NTP_SERVER_1             "ntp.aliyun.com"
+#define NTP_SERVER_2             "cn.pool.ntp.org"
+#define NTP_SERVER_3             "time.nist.gov"
 
 // 调试输出宏：SY7T609 启用时输出到 Serial1（GPIO2），否则输出到 Serial（GPIO1）
 // 注意：SY7T609 类使用前需包含 #include "sy7t609.h"

@@ -359,7 +359,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
   <span id="cycleStatus" style="color:#8e8e93;font-weight:600">--</span>
 </div>
 <p style="font-size:12px;color:#8e8e93;margin:8px 0 6px">在空白处按住并拖动即可添加时段 · 拖动色块边缘调整 · 轻点色块编辑</p>
-<p style="font-size:11px;color:#c7c7cc;margin:0 0 10px">结束早于开始表示跨午夜 · 需联网同步时间 · 最多 6 个时段</p>
+<p style="font-size:11px;color:#c7c7cc;margin:0 0 10px">结束早于开始表示跨午夜 · 需先完成时间同步（联网或手机校正） · 最多 6 个时段</p>
 <div id="cyclePeriodsList"></div>
 <button id="cyclePowerBtn" class="btn" style="margin:16px 0 0" onclick="toggleCycle()">启用循环</button>
 </div>
@@ -557,9 +557,11 @@ function init(){
     
     var closeMoreBtn=document.querySelector('button[onclick="closeMoreSettings()"]');
     if(closeMoreBtn)closeMoreBtn.addEventListener('click',closeMoreSettings);
-    cycleInitTrack();
-    loadCardOrder(0);
-    fetch('/api/time?ts='+Math.floor(Date.now()/1000));
+  cycleInitTrack();
+  loadCardOrder(0);
+  var chipEl=document.getElementById('chipTime');
+  if(chipEl) chipEl.addEventListener('click',manualTimeSync);
+  setInterval(renderChip,1000);
   }catch(e){
     console.error('Error initializing buttons:',e);
   }
@@ -636,6 +638,7 @@ function update(){
     if(otaip) otaip.textContent=(d.conn && d.ip)?d.ip:'--';
     var up=document.getElementById('up'); if(up) up.textContent=fmt(d.up);
     var rst=document.getElementById('rst'); if(rst) rst.textContent=d.rst||'--';
+    updateChipFromStatus(d);
     var ver=document.getElementById('ver'); if(ver) ver.textContent='V'+d.ver;
     var rm=document.getElementById('rm'); if(rm){if(d.m)rm.classList.add('on');else rm.classList.remove('on');}
     var rs=document.getElementById('rs'); if(rs){if(d.s)rs.classList.add('on');else rs.classList.remove('on');}
@@ -1678,7 +1681,7 @@ function updateCycleStatus(d){
     return;
   }
   if(!d.tv){
-    cs.textContent='已启用 · 等待NTP时间同步';
+    cs.textContent='已启用 · 等待时间同步';
     cs.style.color='#ff9500';
     return;
   }
@@ -2211,7 +2214,6 @@ function loadHistory(){
 document.addEventListener('DOMContentLoaded',function(){
   init();
   update();
-  setTimeout(function(){updateChipTime();},3000);
   setTimeout(function(){
     var lo=document.getElementById('loadingOverlay');
     if(lo && !lo.classList.contains('hide')){
@@ -2231,18 +2233,81 @@ function scheduleHistory(){
   if(_histTimer)clearTimeout(_histTimer);
   _histTimer=setTimeout(function(){loadHistory()},60000);
 }
-var _timeTimer=null;
-function scheduleChipTime(){
-  if(_timeTimer)clearTimeout(_timeTimer);
-  _timeTimer=setTimeout(function(){updateChipTime()},30000);
+// ===== 插排时钟（右上角）=====
+// 时间源由设备端仲裁：NTP(1) > 浏览器校正(2) > 未校时(0)
+// 前端只负责：锚定设备时间、每秒本地推进、设备未校时时自动回退
+var _chipAnchor=null;
+var _autoSyncAt=0;
+
+function updateChipFromStatus(d){
+  var el=document.getElementById('chipTime');
+  if(!el)return;
+  if(!d || !d.tv || !d.tstr || d.tstr.indexOf('--')===0){
+    _chipAnchor=null;
+    el.textContent='--:--';
+    el.style.color='#ff9500';
+    el.title='时间未同步：断电后需重新校时（点击可用手机时间校正）';
+    autoBrowserSync();
+    return;
+  }
+  var p=d.tstr.split(':');
+  var h=parseInt(p[0],10),m=parseInt(p[1],10),s=parseInt(p[2],10);
+  if(isNaN(h)||isNaN(m)||isNaN(s))return;
+  _chipAnchor={sec:h*3600+m*60+s, ms:Date.now(), src:(d.tsrc===undefined?0:d.tsrc)};
+  renderChip();
 }
 
-function updateChipTime(){
-  fetch('/api/now').then(function(r){return r.json()}).then(function(d){
-    var el=document.getElementById('chipTime');
-    if(el) el.textContent=d.str||'--:--';
-    scheduleChipTime();
-  }).catch(function(){scheduleChipTime();});
+function renderChip(){
+  var el=document.getElementById('chipTime');
+  if(!el)return;
+  if(!_chipAnchor){el.textContent='--:--';return;}
+  var total=_chipAnchor.sec+Math.floor((Date.now()-_chipAnchor.ms)/1000);
+  total=((total%86400)+86400)%86400;
+  var h=Math.floor(total/3600),m=Math.floor((total%3600)/60);
+  var txt=(h<10?'0':'')+h+':'+(m<10?'0':'')+m;
+  if(el.textContent!==txt) el.textContent=txt;
+  if(_chipAnchor.src===1){
+    el.style.color='#8e8e93';
+    el.title='已联网自动校时（NTP）';
+  }else if(_chipAnchor.src===2){
+    el.style.color='#ff9500';
+    el.title='已用手机浏览器时间校正（离线模式）';
+  }else{
+    el.style.color='#c7c7cc';
+    el.title='时间来源未知';
+  }
+}
+
+// 设备未校时（重启后 / NTP 不可达）时自动用浏览器时间填补
+// 15 秒节流：设备持续无时间时不会刷请求
+function autoBrowserSync(){
+  var now=Date.now();
+  if(now-_autoSyncAt<15000)return;
+  _autoSyncAt=now;
+  fetch('/api/time?ts='+Math.floor(now/1000)).then(function(r){return r.json()}).then(function(d){
+    if(d&&d.ok){
+      console.log('[clock] fallback browser sync applied');
+      setTimeout(update,300);
+    }
+  }).catch(function(){});
+}
+
+// 点击右上角时钟：手动用手机时间校正（NTP 已同步时设备会拒绝）
+function manualTimeSync(){
+  var msg=(_chipAnchor && _chipAnchor.src===1)
+    ? '当前时间来自上次 NTP 同步。\n离线时可用手机时间校正；联网后 NTP 会自动接管。继续？'
+    : '用手机当前时间校正插排时钟？';
+  if(!confirm(msg))return;
+  fetch('/api/time?ts='+Math.floor(Date.now()/1000)).then(function(r){return r.json()}).then(function(d){
+    if(d&&d.ok){
+      alert('已校正');
+    }else if(d&&d.reason==='ntp'){
+      alert('插排已通过 NTP 自动校时，浏览器时间不覆盖（NTP 优先）');
+    }else{
+      alert('校正失败');
+    }
+    update();
+  }).catch(function(){alert('校正失败：设备无响应');});
 }
 </script>
 </body>

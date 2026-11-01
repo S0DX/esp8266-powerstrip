@@ -1,6 +1,7 @@
 #include "wifi_mgr.h"
 #include "config.h"
 #include "gpio_mgr.h"
+#include "time_mgr.h"
 #include <EEPROM.h>
 
 WiFiManager::WiFiState WiFiManager::state_ = WiFiManager::STATE_IDLE;
@@ -184,7 +185,7 @@ void WiFiManager::handle() {
                 sta_connected_time_ = millis();
                 Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
                 GPIOManager::setRedMode(GPIOManager::LED_OFF);
-                configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov"); // 同步北京时间
+                TimeManager::onNetworkUp();  // 联网成功：触发 NTP 自动校时
                 startMDNS();
                 // 自适应功率调整会在 handle() 中自动执行
             } else if (millis() - connection_start_time_ > WIFI_CONNECT_TIMEOUT) {
@@ -210,6 +211,7 @@ void WiFiManager::handle() {
                 last_reconnect_attempt_ = millis();
                 Serial.println("[WiFi] Disconnected!");
                 GPIOManager::setRedMode(GPIOManager::LED_BLINK);
+                TimeManager::onNetworkDown();  // 离线：本地时钟继续走，允许浏览器校时
                 if (mdns_started_) {
                     MDNS.close();
                     mdns_started_ = false;

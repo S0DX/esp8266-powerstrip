@@ -11,6 +11,7 @@
 #include "energy_mgr.h"
 #include "mqtt_mgr.h"
 #include "log_buffer.h"
+#include "time_mgr.h"
 
 void buttonCallback(ButtonHandler::ClickType type);
 void handleButtonStateMachine();
@@ -25,6 +26,10 @@ void setup() {
 
     // 初始化内存日志缓冲区（不持久化，重启即清空）
     log_buffer_init();
+
+    // 时间同步管理器：固定时区，不读取任何持久化时间
+    // 断电重启后必须等 NTP 或浏览器校时，避免带着旧时钟上电
+    TimeManager::init();
 
     // 打印本次复位原因
     String reset_reason = ESP.getResetReason();
@@ -127,6 +132,9 @@ void loop() {
     }
 
     WiFiManager::handle();
+    ESP.wdtFeed();
+    // 时间源仲裁：NTP 优先、离线沿用本地时钟、失败按间隔重试
+    TimeManager::handle();
     ESP.wdtFeed();
     OTAManager::handle();
     ESP.wdtFeed();
