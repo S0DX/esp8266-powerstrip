@@ -1132,7 +1132,7 @@ function mobileArrange(){
   applyPage();
 }
 function pageW(){return document.querySelector('.pages-viewport').clientWidth;}
-function applyPage(){var t=document.getElementById('mTrack');t.classList.remove('dragging');t.style.transform='translateX('+(-_mpg*pageW())+'px)';var d=document.querySelectorAll('#mDots .dot');for(var i=0;i<4;i++)d[i].classList.toggle('on',i===_mpg);}
+function applyPage(){var t=document.getElementById('mTrack');if(!t)return;t.classList.remove('dragging');t.style.transform='translateX('+(-_mpg*pageW())+'px)';var d=document.querySelectorAll('#mDots .dot');for(var i=0;i<4;i++){if(d[i])d[i].classList.toggle('on',i===_mpg);}}
 function goPage(i){_mpg=Math.max(0,Math.min(3,i));applyPage();}
 function canSwipe(e){
   var t=e.target;
