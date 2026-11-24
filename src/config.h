@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.8.2"
+#define VERSION "5.9.0"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -113,6 +113,18 @@
 // 长通模式 EEPROM（主继电器强制常开，重启后保持）
 #define EEPROM_LATCH_ADDR        750  // 1 byte: 0x4C='L' 表示长通开启
 #define EEPROM_LATCH_MAGIC       0x4C
+// 24h 逐小时用电统计 EEPROM（滚动最近 24 小时，v5.9）
+// 布局：magic 4B + last_hour/head/count/pad 4B + 24×float 96B + saved_total float 4B = 108B
+#define EEPROM_ENERGY_HOURLY_ADDR  751  // 751-858
+#define ENERGY_HOURLY_MAGIC        0x45483234UL  // "EH24"
+
+// ===== 自动检测更新（v5.9） =====
+#define UPDATE_CHECK_INTERVAL_MS   (7UL * 24 * 3600 * 1000)  // 1 周
+#define UPDATE_FIRST_CHECK_MS      60000UL                   // 开机 1 分钟后首查
+// 清单源顺序尝试：jsdelivr 三大入口（国内可达性随时段波动，多源容错）
+#define UPDATE_MANIFEST_URL        "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
+#define UPDATE_MANIFEST_URL2       "https://fastly.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
+#define UPDATE_MANIFEST_URL3       "https://testingcf.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
 
 // ===== 时间同步参数 =====
 // 时区固定东八区（CST-8），与 configTime 的第二/三参数语义保持一致

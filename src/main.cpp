@@ -12,6 +12,7 @@
 #include "mqtt_mgr.h"
 #include "log_buffer.h"
 #include "time_mgr.h"
+#include "update_checker.h"
 
 void buttonCallback(ButtonHandler::ClickType type);
 void handleButtonStateMachine();
@@ -30,6 +31,9 @@ void setup() {
     // 时间同步管理器：固定时区，不读取任何持久化时间
     // 断电重启后必须等 NTP 或浏览器校时，避免带着旧时钟上电
     TimeManager::init();
+
+    // 自动检测更新：开机 1 分钟首查，此后每 7 天一次（仅提醒，升级需用户确认）
+    UpdateChecker::init();
 
     // 打印本次复位原因
     String reset_reason = ESP.getResetReason();
@@ -135,6 +139,8 @@ void loop() {
     ESP.wdtFeed();
     // 时间源仲裁：NTP 优先、离线沿用本地时钟、失败按间隔重试
     TimeManager::handle();
+    // 自动检测更新（每 7 天 + 开机 1 分钟首查；检测阻塞主循环最长 ~8s）
+    UpdateChecker::handle();
     ESP.wdtFeed();
     OTAManager::handle();
     ESP.wdtFeed();

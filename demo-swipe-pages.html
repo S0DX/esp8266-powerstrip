@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>主页横滑分屏 Demo v2 · 内容全量版</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,"PingFang SC",sans-serif;background:#e5e5ea;padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.tip{font-size:12px;color:#666;text-align:center;line-height:1.6;max-width:340px}
+.tip b{color:#185fa5}
+.phone{width:340px;height:660px;background:#efeff4;border-radius:18px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12);display:flex;flex-direction:column;position:relative;touch-action:pan-y}
+.appbar{background:#f5f5f7;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;border-bottom:0.5px solid #d9d9de}
+.appbar .t{font-size:15px;font-weight:500;color:#2c2c2a}
+.appbar .c{font-size:13px;color:#8e8e93}
+.pages-viewport{flex:1;overflow:hidden;position:relative}
+.pages-track{display:flex;width:300%;height:100%;transition:transform .28s cubic-bezier(.3,.8,.3,1);will-change:transform}
+.pages-track.dragging{transition:none}
+.page{width:33.3333%;height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 24px;box-sizing:border-box}
+.page::-webkit-scrollbar{display:none}
+.dots{flex-shrink:0;display:flex;justify-content:center;gap:8px;padding:9px 0 11px;background:#f5f5f7}
+.dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
+.dot.on{background:#185fa5;width:18px;border-radius:4px}
+.card{background:#ffffff;border-radius:12px;padding:12px;margin-bottom:10px;border:0.5px solid #e5e5ea}
+.card-title{font-size:13px;font-weight:500;color:#2c2c2a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.muted{font-size:11px;color:#c7c7cc;font-weight:400}
+.mode-banner{background:#faeeda;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.mode-banner .mt{font-size:12px;color:#854f0b;font-weight:500}
+.mode-banner .mx{font-size:11px;color:#854f0b;border:0.5px solid #ba7517;border-radius:99px;padding:3px 10px;cursor:pointer}
+.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0}
+.row+.row,.row.first{border-top:0.5px solid #f0f0f2}
+.row.first{border-top:none}
+.name{font-size:13px;font-weight:500;color:#2c2c2a}
+.sub{font-size:11px;color:#8e8e93;margin-top:2px}
+.sub.ok{color:#34c759}
+.sub.warn{color:#ba7517}
+.lbl-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:0.5px solid #f0f0f2}
+.lbl-row .l{font-size:13px;color:#2c2c2a}
+.tgl{width:42px;height:24px;border-radius:12px;background:#e5e5ea;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.tgl.on{background:#34c759}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.tgl.on::after{left:20px}
+.btn{display:block;width:100%;background:#007aff;color:#fff;border:none;border-radius:8px;padding:9px 0;font-size:13px;text-align:center;cursor:pointer;margin-top:8px;font-family:inherit}
+.btn-ghost{display:block;width:100%;background:#fff;color:#007aff;border:0.5px solid #b5d4f4;border-radius:8px;padding:9px 0;font-size:13px;text-align:center;cursor:pointer;margin-top:8px;font-family:inherit}
+.cd-strip{background:#e6f1fb;border-radius:8px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.cd-strip .cl{font-size:12px;color:#0c447c}
+.cd-strip .cx{font-size:11px;color:#185fa5;border:0.5px solid #378add;border-radius:99px;padding:3px 10px;cursor:pointer}
+.grid{display:flex;gap:8px;margin-bottom:8px}
+.stat{flex:1;background:#f2f2f7;border-radius:8px;padding:8px;text-align:center}
+.stat .l{font-size:11px;color:#8e8e93}
+.stat .v{font-size:14px;font-weight:500;color:#2c2c2a;margin-top:2px}
+.hist-foot{display:flex;justify-content:space-around;padding-top:6px;border-top:0.5px solid #f0f0f2}
+.hist-foot .hf{text-align:center}
+.hist-foot .l{font-size:11px;color:#8e8e93}
+.hist-foot .v{font-size:13px;font-weight:500;color:#2c2c2a;margin-top:2px}
+.picker{display:flex;align-items:center;justify-content:center;gap:6px;background:#f2f2f7;border-radius:10px;padding:6px 0;margin-bottom:10px}
+.picker .col{height:96px;overflow-y:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:y mandatory;width:64px;text-align:center}
+.picker .col::-webkit-scrollbar{display:none}
+.picker .it{height:32px;line-height:32px;font-size:14px;color:#8e8e93;scroll-snap-align:center}
+.picker .sep{font-size:12px;color:#444441}
+.cycle-track-wrap{position:relative;user-select:none;touch-action:none;cursor:pointer}
+.cycle-track{position:relative;height:52px;background:#f2f2f7;border-radius:8px;overflow:hidden}
+.cycle-block{position:absolute;top:0;height:100%;background:rgba(52,199,89,.75);border:0.5px solid #34c759;border-radius:6px;cursor:pointer}
+.cycle-ghost{position:absolute;top:0;height:100%;background:rgba(0,122,255,.25);border:0.5px dashed #185fa5;border-radius:6px;pointer-events:none;display:none}
+.cycle-ghost .gt{position:absolute;top:3px;left:0;right:0;text-align:center;font-size:11px;color:#0c447c;white-space:nowrap}
+.cycle-ticks{position:relative;height:16px;margin-top:4px}
+.cycle-ticks span{position:absolute;font-size:11px;color:#8e8e93;transform:translateX(-50%)}
+.period-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:0.5px solid #f0f0f2;font-size:12px;color:#2c2c2a}
+.period-item .del{color:#ff3b30;font-size:11px;cursor:pointer;padding:2px 6px}
+.state-line{font-size:12px;color:#34c759;background:#eaf3de;border-radius:8px;padding:6px 10px;margin-bottom:8px}
+.swipe-hint{font-size:11px;color:#8e8e93;text-align:center;padding:6px 0 2px}
+.more-row{display:flex;justify-content:space-between;align-items:center;background:#ffffff;border:0.5px solid #e5e5ea;border-radius:12px;padding:12px;cursor:pointer}
+.more-row span{font-size:13px;font-weight:500;color:#2c2c2a}
+</style>
+</head>
+<body>
+<div class="tip">内容与现版主页<b>一一对应</b>的完整版：三屏横滑，全部功能保留。<br>时间轴与选择器为 no-swipe 区，拖拽不切屏。桌面可鼠标拖动验证。</div>
+<div class="phone" id="phone">
+  <div class="appbar"><span class="t">智能插排</span><span class="c" id="clock">11:19</span></div>
+  <div class="pages-viewport">
+    <div class="pages-track" id="track">
+
+      <!-- ======== 屏1 控制 ======== -->
+      <div class="page">
+        <div class="mode-banner"><span class="mt">长通模式 · 主路常开</span><span class="mx" onclick="alert('demo：/api/latch?enabled=false')">退出</span></div>
+        <div class="card">
+          <div class="card-title">输出控制</div>
+          <div style="display:flex;gap:8px;justify-content:center;padding:6px 0 10px">
+            <div style="flex:1;background:#f2f2f7;border-radius:10px;padding:10px;text-align:center">
+              <div style="font-size:13px;font-weight:500;color:#2c2c2a">从继电器</div>
+              <div style="font-size:11px;color:#8e8e93;margin:3px 0 8px">可控端</div>
+              <div class="tgl" style="margin:0 auto" id="sTgl" onclick="tog('sTgl','sSub',['输出中 · 8.1W','已关闭'])"></div>
+              <div style="font-size:11px;color:#8e8e93;margin-top:7px" id="sSub">已关闭</div>
+            </div>
+            <div style="flex:1;background:#f2f2f7;border-radius:10px;padding:10px;text-align:center">
+              <div style="font-size:13px;font-weight:500;color:#2c2c2a">主继电器</div>
+              <div style="font-size:11px;color:#8e8e93;margin:3px 0 8px">常通端</div>
+              <div class="tgl on" style="margin:0 auto" id="mTgl" onclick="tog('mTgl','mSub',['输出中 · 12.3W','已关闭（长通下主路不受控）'])"></div>
+              <div style="font-size:11px;color:#34c759;margin-top:7px" id="mSub">输出中 · 12.3W</div>
+            </div>
+          </div>
+          <div class="lbl-row"><span class="l">长通模式<span style="font-size:11px;color:#8e8e93;display:block">主路保持常开，不受任何控制</span></span><div class="tgl on" onclick="alert('demo：/api/latch?enabled=false')"></div></div>
+          <div class="lbl-row"><span class="l">锁定模式<span style="font-size:11px;color:#8e8e93;display:block">禁用物理按键，仅 Web 端控制</span></span><div class="tgl" onclick="this.classList.toggle('on')"></div></div>
+          <div class="lbl-row"><span class="l">拔除断电<span style="font-size:11px;color:#8e8e93;display:block">低于阈值自动关闭 · 长通下仅关副路</span></span><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="cd-strip" style="margin-top:10px"><span class="cl">倒计时 1:30 后关闭副路</span><span class="cx">取消</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">实时电量</div>
+          <div class="grid">
+            <div class="stat"><div class="l">电压(V)</div><div class="v">220.1</div></div>
+            <div class="stat"><div class="l">电流(A)</div><div class="v">0.056</div></div>
+          </div>
+          <div class="grid" style="margin-bottom:0">
+            <div class="stat"><div class="l">功率(W)</div><div class="v">12.3</div></div>
+            <div class="stat"><div class="l">用电量(kWh)</div><div class="v">8.24</div></div>
+          </div>
+          <div class="lbl-row"><span class="l">电量检测</span><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="lbl-row"><span class="l">校准状态</span><span style="font-size:12px;color:#34c759">自动校准完成</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">用电历史 <span class="muted">过去 7 天</span></div>
+          <div style="display:flex;align-items:flex-end;gap:5px;height:44px;padding:0 6px;margin-bottom:8px">
+            <div style="flex:1;height:40%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:70%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:30%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:90%;background:#185fa5;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:55%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:20%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+            <div style="flex:1;height:45%;background:#85b7eb;border-radius:2px 2px 0 0"></div>
+          </div>
+          <div class="hist-foot">
+            <div class="hf"><div class="l">当前电量</div><div class="v">0.12度</div></div>
+            <div class="hf"><div class="l">本月用电</div><div class="v">8.2度</div></div>
+            <div class="hf"><div class="l">上月用电</div><div class="v">45.6度</div></div>
+          </div>
+        </div>
+        <div class="swipe-hint">← 左右滑动：第 2 页定时 · 第 3 页人来上电与系统 →</div>
+      </div>
+
+      <!-- ======== 屏2 定时 ======== -->
+      <div class="page">
+        <div class="card">
+          <div class="card-title">快速倒计时 <span class="muted">滚动选择 · 逻辑与现版一致</span></div>
+          <div class="picker no-swipe">
+            <div class="col" id="hourCol"></div><span class="sep">时</span>
+            <div class="col" id="minCol"></div><span class="sep">分</span>
+          </div>
+          <div class="state-line" id="cdState" style="color:#8e8e93;background:#f2f2f7">未运行 · 选好时长点下方启动</div>
+          <button class="btn" id="cdStartBtn" onclick="cdToggle()">启动倒计时</button>
+        </div>
+        <div class="card">
+          <div class="card-title">24小时循环 <span class="muted">从更多设置上移</span></div>
+          <div class="state-line">已启用 · 运行中（20:00-23:00 时段）</div>
+          <div class="cycle-track-wrap no-swipe" id="trackWrap">
+            <div class="cycle-track" id="cTrack"><div class="cycle-ghost" id="cGhost"><div class="gt" id="cGhostT"></div></div></div>
+            <div class="cycle-ticks"><span style="left:0%">0</span><span style="left:25%">6</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:100%">24</span></div>
+          </div>
+          <div style="font-size:11px;color:#8e8e93;text-align:center;margin:4px 0 6px">拖空白创建（≥15分钟）· 点色块删除 · 拖拽不会触发切屏</div>
+          <div id="periodList"></div>
+          <button class="btn-ghost" onclick="alert('demo：切换循环启用')">关闭循环</button>
+        </div>
+        <div class="swipe-hint">← 滑回第 1 页或到第 3 页 →</div>
+      </div>
+
+      <!-- ======== 屏3 人来上电与系统 ======== -->
+      <div class="page">
+        <div class="card">
+          <div class="card-title">人来上电</div>
+          <div class="lbl-row" style="border-top:none"><span class="l">启用检测</span><div class="tgl" onclick="alert('demo：长通下被拒绝，reason=latch')"></div></div>
+          <div class="lbl-row"><span class="l">检测目标</span><span style="font-size:12px;color:#007aff;font-weight:500">HomePhone</span></div>
+          <div class="lbl-row"><span class="l">MAC 地址</span><span style="font-size:12px;color:#8e8e93">A4:83:E7:xx:xx:xx</span></div>
+          <div class="lbl-row"><span class="l">状态</span><span style="font-size:12px;color:#ba7517">长通中暂停 · 配置保留</span></div>
+          <button class="btn" onclick="alert('demo：扫描 WiFi 列表')">选择 WiFi</button>
+          <button class="btn-ghost" onclick="alert('demo：更多配置（RSSI/扫描间隔/联锁倒计时等）')">更多配置</button>
+        </div>
+        <div class="card">
+          <div class="card-title">WiFi 状态</div>
+          <div class="lbl-row" style="border-top:none"><span class="l">连接状态</span><span style="font-size:12px;color:#34c759">已连接</span></div>
+          <div class="lbl-row"><span class="l">信号强度</span><span style="font-size:12px;color:#34c759">-52 dBm</span></div>
+          <div class="lbl-row"><span class="l">已连接 SSID</span><span style="font-size:12px;color:#444441">HomeWiFi</span></div>
+          <div class="lbl-row"><span class="l">设备 IP</span><span style="font-size:12px;color:#444441">192.168.0.196</span></div>
+          <div class="lbl-row"><span class="l">WiFi 断开红灯告警</span><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <button class="btn-ghost" onclick="alert('demo：连接 WiFi 弹窗')">连接 WiFi</button>
+        </div>
+        <div class="more-row" onclick="alert('demo：进入更多设置（计费/功耗优化/MQTT/卡片排序/系统等）')"><span>更多设置</span><span style="color:#c7c7cc;font-weight:400">›</span></div>
+        <div class="swipe-hint">← 滑回第 2 页 →</div>
+      </div>
+
+    </div>
+    <div class="dots" style="position:absolute;bottom:0;left:0;right:0">
+      <span class="dot on" onclick="go(0)"></span><span class="dot" onclick="go(1)"></span><span class="dot" onclick="go(2)"></span>
+    </div>
+  </div>
+</div>
+<div class="tip">验证清单：① 三屏横滑 + 圆点跳页；② 时间轴拖拽不切屏；③ 倒计时选择器滚动不切屏；④ 屏内纵向滚动正常；⑤ 全部主页功能在位（模式/拔除/人来上电/电量检测/红灯告警/更多设置入口）。</div>
+<script>
+// ===== 分屏手势（ES5，与固件页面同风格）=====
+var cur=0,track=document.getElementById('track'),viewport=document.querySelector('.pages-viewport');
+var N=3;
+function pageW(){return viewport.clientWidth;}
+function setX(px,anim){track.classList.toggle('dragging',!anim);track.style.transform='translateX('+px+'px)';}
+function baseX(){return -cur*pageW();}
+function apply(){setX(baseX(),true);var d=document.querySelectorAll('.dot');for(var i=0;i<N;i++)d[i].classList.toggle('on',i===cur);}
+function go(i){cur=Math.max(0,Math.min(N-1,i));apply();}
+function tog(id,subId,texts){var t=document.getElementById(id),s=document.getElementById(subId);var on=t.classList.toggle('on');s.textContent=texts[on?0:1];}
+var g={x0:0,y0:0,t0:0,lock:'',base:0};
+function canStart(e){
+  if(e.touches&&e.touches.length!==1)return false;
+  var t=e.target;
+  while(t){if(t.classList&&t.classList.contains('no-swipe'))return false;t=t.parentElement;}
+  return true;
+}
+viewport.addEventListener('touchstart',function(e){
+  if(!canStart(e)){g.lock='skip';return;}
+  g.x0=e.touches[0].clientX;g.y0=e.touches[0].clientY;g.t0=Date.now();g.base=baseX();g.lock='';
+},{passive:true});
+viewport.addEventListener('touchmove',function(e){
+  if(g.lock==='skip'){return;}
+  var dx=e.touches[0].clientX-g.x0,dy=e.touches[0].clientY-g.y0;
+  if(!g.lock){
+    if(Math.abs(dx)<12&&Math.abs(dy)<12)return;
+    g.lock=(Math.abs(dx)>Math.abs(dy))?'h':'v';
+    if(g.lock==='v')return;
+  }
+  if(g.lock==='h'){
+    e.preventDefault();
+    var x=g.base+dx;
+    if(x>0)x=x/3;
+    if(x<-(N-1)*pageW())x=-(N-1)*pageW()+(x+(N-1)*pageW())/3;
+    setX(x,false);
+  }
+},{passive:false});
+viewport.addEventListener('touchend',function(e){
+  if(g.lock!=='h'){g.lock='';return;}
+  var dx=e.changedTouches[0].clientX-g.x0,dt=Date.now()-g.t0;
+  var v=dx/dt;
+  if(dx<-pageW()*0.3||v<-0.5)cur++;
+  else if(dx>pageW()*0.3||v>0.5)cur--;
+  cur=Math.max(0,Math.min(N-1,cur));
+  apply();g.lock='';
+},{passive:true});
+viewport.addEventListener('mousedown',function(e){
+  if(!canStart(e)){g.lock='skip';return;}
+  g.x0=e.clientX;g.y0=e.clientY;g.t0=Date.now();g.base=baseX();g.lock='m';
+  e.preventDefault();
+});
+document.addEventListener('mousemove',function(e){
+  if(g.lock!=='m')return;
+  setX(g.base+(e.clientX-g.x0),false);
+});
+document.addEventListener('mouseup',function(e){
+  if(g.lock!=='m'){g.lock='';return;}
+  var dx=e.clientX-g.x0;
+  if(dx<-60)cur++;else if(dx>60)cur--;
+  cur=Math.max(0,Math.min(N-1,cur));
+  apply();g.lock='';
+});
+window.addEventListener('resize',apply);
+setInterval(function(){var d=new Date();document.getElementById('clock').textContent=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);},1000);
+
+// ===== 快速倒计时选择器（滚动列，no-swipe）=====
+function fillCol(id,n,unit){var c=document.getElementById(id);for(var i=0;i<n;i++){var d=document.createElement('div');d.className='it';d.textContent=i+unit;c.appendChild(d);}}
+fillCol('hourCol',24,'时');fillCol('minCol',60,'分');
+var cdRun=false,cdRemain=0,cdTimer=null;
+function cdToggle(){
+  var btn=document.getElementById('cdStartBtn'),st=document.getElementById('cdState');
+  if(cdRun){cdRun=false;clearInterval(cdTimer);st.textContent='已取消';st.style.color='#8e8e93';st.style.background='#f2f2f7';btn.textContent='启动倒计时';return;}
+  var h=Math.round(document.getElementById('hourCol').scrollTop/32);
+  var m=Math.round(document.getElementById('minCol').scrollTop/32);
+  cdRemain=h*60+m;if(cdRemain<=0)cdRemain=30;
+  cdRun=true;btn.textContent='关闭倒计时';
+  st.style.color='#0c447c';st.style.background='#e6f1fb';
+  cdTimer=setInterval(function(){
+    cdRemain--;
+    if(cdRemain<=0){cdRun=false;clearInterval(cdTimer);st.textContent='已到时关闭';st.style.color='#8e8e93';st.style.background='#f2f2f7';btn.textContent='启动倒计时';return;}
+    st.textContent='倒计时运行 · 剩余 '+Math.floor(cdRemain/60)+':'+('0'+cdRemain%60).slice(-2);
+  },1000);
+}
+
+// ===== 24h 时间轴（简化复刻，验证与横滑共存）=====
+var periods=[{s:10*60,e:12*60},{s:20*60,e:23*60}];
+var wrap=document.getElementById('trackWrap'),ghost=document.getElementById('cGhost'),ghostT=document.getElementById('cGhostT');
+function fmt(m){return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}
+function renderPeriods(){
+  var tr=document.getElementById('cTrack');
+  var blocks=tr.querySelectorAll('.cycle-block');
+  for(var i=0;i<blocks.length;i++)blocks[i].remove();
+  periods.forEach(function(p,i){
+    var b=document.createElement('div');b.className='cycle-block';
+    b.style.left=(p.s/1440*100)+'%';b.style.width=((p.e-p.s)/1440*100)+'%';
+    b.title=fmt(p.s)+' - '+fmt(p.e)+'（点击删除）';
+    b.addEventListener('click',function(e){e.stopPropagation();periods.splice(i,1);renderPeriods();});
+    tr.appendChild(b);
+  });
+  var list=document.getElementById('periodList');list.innerHTML='';
+  periods.forEach(function(p,i){
+    var d=document.createElement('div');d.className='period-item';
+    d.innerHTML='<span>'+(i+1)+'. '+fmt(p.s)+' - '+fmt(p.e)+(p.e<p.s?' ↕跨天':'')+'</span><span class="del" data-i="'+i+'">删除</span>';
+    d.querySelector('.del').addEventListener('click',function(){periods.splice(i,1);renderPeriods();});
+    list.appendChild(d);
+  });
+}
+var drag=null;
+wrap.addEventListener('pointerdown',function(e){
+  var r=document.getElementById('cTrack').getBoundingClientRect();
+  drag={x0:e.clientX,r:r,left:r.left,width:r.width};
+  ghost.style.display='block';ghost.style.left='0';ghost.style.width='0';
+  e.preventDefault();
+});
+document.addEventListener('pointermove',function(e){
+  if(!drag)return;
+  var a=Math.max(drag.left,Math.min(e.clientX,drag.left+drag.width));
+  var b=Math.min(drag.left+drag.width,Math.max(e.clientX,drag.left));
+  drag.curA=Math.round((a-drag.left)/drag.width*1440);
+  drag.curB=Math.round((b-drag.left)/drag.width*1440);
+  ghost.style.left=((a-drag.left)/drag.width*100)+'%';
+  ghost.style.width=((b-a)/drag.width*100)+'%';
+  ghostT.textContent=fmt(drag.curA)+' - '+fmt(drag.curB);
+});
+document.addEventListener('pointerup',function(e){
+  if(!drag)return;
+  ghost.style.display='none';
+  var s=Math.min(drag.curA,drag.curB),en=Math.max(drag.curA,drag.curB);
+  if(en-s>=15)periods.push({s:s,e:en});
+  drag=null;renderPeriods();
+});
+renderPeriods();apply();
+</script>
+</body>
+</html>

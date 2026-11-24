@@ -1,0 +1,6 @@
+{
+  "v": "5.9.0",
+  "bin": "https://github.com/S0DX/esp8266-powerstrip/releases/download/v5.9.0/firmware-v5.9.0-20261124.bin",
+  "notes": "4-screen mobile UI, 24h hourly energy stats, auto update check (L1+L2), footer info",
+  "sha256": "PENDING_RELEASE"
+}

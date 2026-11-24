@@ -102,6 +102,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .cycle-badge-tap{cursor:pointer;color:#007aff;background:rgba(0,122,255,.1);-webkit-tap-highlight-color:transparent;transition:background .15s}
 .cycle-txt-btn{background:none;border:none;font-size:15px;font-family:inherit;cursor:pointer;padding:8px 2px;font-weight:400;-webkit-tap-highlight-color:transparent}
 .cycle-empty{font-size:13px;color:#c7c7cc;text-align:center;line-height:36px}
+/* ===== 手机版横滑分屏（v5.9） ===== */
+#mobilePages{display:none;height:calc(100vh - 46px)}
+#mobilePages .pages-viewport{height:100%;overflow:hidden;position:relative}
+#mobilePages .pages-track{display:flex;width:400%;height:100%;transition:transform .28s cubic-bezier(.3,.8,.3,1);will-change:transform}
+#mobilePages .pages-track.dragging{transition:none}
+#mobilePages .page{width:25%;height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 64px;box-sizing:border-box}
+#mobilePages .page::-webkit-scrollbar{display:none}
+#mobilePages .dots{display:flex;justify-content:center;gap:8px;padding:9px 0 11px;background:#f5f5f7;position:absolute;bottom:0;left:0;right:0}
+#mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
+#mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
+.mode-banner{background:#faeeda;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.mode-banner .mt{font-size:12px;color:#854f0b;font-weight:500}
+.mode-banner .mx{font-size:11px;color:#854f0b;border:1px solid #ba7517;border-radius:99px;padding:3px 10px;cursor:pointer}
+.no-swipe{touch-action:none}
+.swipe-hint{font-size:11px;color:#8e8e93;text-align:center;padding:6px 0 2px}
+.h24-chart{display:flex;align-items:flex-end;gap:2px;height:46px;padding:0 2px;margin:6px 0 2px}
+.h24-chart .hb{flex:1;background:#85b7eb;border-radius:2px 2px 0 0;position:relative;min-height:2px}
+.h24-chart .hb.now{background:#007aff}
+.h24-scale{display:flex;justify-content:space-between;font-size:10px;color:#c7c7cc;padding:0 2px}
+.settings-footer{border-top:1px solid #e5e5ea;margin-top:20px;padding:16px 0 60px;text-align:center}
+.settings-footer .f1{font-size:13px;font-weight:500;color:#2c2c2a}
+.settings-footer .f2{font-size:11px;color:#8e8e93;margin-top:4px}
+.settings-footer .f2 a{color:#007aff;text-decoration:none}
+.upd-badge{background:#faeeda;color:#854f0b;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.upd-badge .ub{font-weight:500}
 </style>
 </head>
 <body>
@@ -168,7 +193,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 
 <div class="card" data-card="history">
-<div class="card-title">用电历史 <span style="font-size:10px;color:#c7c7cc;font-weight:400">过去 7 天</span></div>
+<div class="card-title">用电历史</div>
+<div style="font-size:11px;color:#8e8e93;margin:2px 0 4px">过去 24 小时 · 逐小时 kWh</div>
+<div class="h24-chart" id="h24Chart"></div>
+<div class="h24-scale"><span>-23h</span><span>-12h</span><span>now</span></div>
+<div style="border-top:1px solid #e5e5ea;margin:12px 0 0"></div>
+<div style="font-size:11px;color:#8e8e93;margin:8px 0 4px">过去 7 天 · 每日 kWh</div>
 <div class="bar-chart" id="histChart" style="margin:8px 0 0">
 <div class="bar-wrap"><div class="bar-val" id="hv0"></div><div class="bar" id="hb0" style="height:2px"></div><div class="bar-label" id="hl0">-</div></div>
 <div class="bar-wrap"><div class="bar-val" id="hv1"></div><div class="bar" id="hb1" style="height:2px"></div><div class="bar-label" id="hl1">-</div></div>
@@ -212,6 +242,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 
 <div id='cardsContainer'></div>
+
+<!-- ======== 手机版横滑分屏（v5.9）：桌面版隐藏，卡片由 renderCards 分配 ======== -->
+<div id='mobilePages'>
+  <div class='pages-viewport'>
+    <div class='pages-track' id='mTrack'>
+      <div class='page' id='mp0'></div>
+      <div class='page' id='mp1'></div>
+      <div class='page' id='mp2'></div>
+      <div class='page' id='mp3'></div>
+    </div>
+    <div class='dots'>
+      <span class='dot on' onclick='goPage(0)'></span>
+      <span class='dot' onclick='goPage(1)'></span>
+      <span class='dot' onclick='goPage(2)'></span>
+      <span class='dot' onclick='goPage(3)'></span>
+    </div>
+  </div>
+</div>
 
 <div class="card">
 <div class="card-title">设备信息</div>
@@ -522,12 +570,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 </div>
 
+<div class="card">
+<div class="card-title">固件更新</div>
+<div id="updRow" style="font-size:12px;color:#8e8e93">当前版本 <span id="updCur">--</span> · 未检查</div>
+<div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
+<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">自动检测每周一次；也可手动检查。在线升级期间请勿断电，失败不影响当前固件。</p>
+<div style="display:flex;gap:8px;margin-top:10px">
+  <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
+  <button class="btn" id="doUpdBtn" style="width:auto;padding:8px 14px;flex:1;display:none" onclick="doUpgradeNow()">在线升级</button>
+</div>
+</div>
+
+<div class="settings-footer">
+  <div class="f1">Smart Power Strip v<span id="footerVer">--</span></div>
+  <div class="f2">项目与固件：<a href="https://github.com/S0DX/esp8266-powerstrip" target="_blank">github.com/S0DX/esp8266-powerstrip</a></div>
+  <div class="f2">作者：S0DX · 固件基于 ESP8266 Arduino Core</div>
+</div>
+
 </div>
 </div>
 
 <script>
 var selSSID='';
 var _latch=false;
+var VERSION_STR='';
 
 function init(){
   try{
@@ -645,6 +711,14 @@ function update(){
     var rst=document.getElementById('rst'); if(rst) rst.textContent=d.rst||'--';
     updateChipFromStatus(d);
     var ver=document.getElementById('ver'); if(ver) ver.textContent='V'+d.ver;
+    VERSION_STR=d.ver||VERSION_STR;
+    var fc=document.getElementById('footerVer'); if(fc)fc.textContent=d.ver;
+    var uc=document.getElementById('updCur'); if(uc)uc.textContent=d.ver;
+    var ub=document.getElementById('updBadge');
+    if(ub){
+      if(d.uav){var lv=document.getElementById('updLv');if(lv)lv.textContent=d.ulv;ub.style.display='flex';}
+      else ub.style.display='none';
+    }
     _latch=!!d.lt;
     var lt=document.getElementById('lt'); if(lt){if(_latch)lt.classList.add('on');else lt.classList.remove('on');}
     var rm=document.getElementById('rm');
@@ -977,6 +1051,145 @@ function renderCards(order){
   var mt=document.getElementById('mt');if(mt)mt.addEventListener('click',toggleMeter);
   var wb=document.getElementById('wifiBtn');if(wb)wb.addEventListener('click',showWifi);
   setTimeout(function(){loadHistory();},100);
+  if(IS_MOBILE)mobileArrange();
+}
+
+// ===== 手机版横滑分屏（v5.9）：桌面版保持纵向卡片流 =====
+var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
+var _mpg=0,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
+var _PAGE_CARDS=[['power','history'],['relay'],['quicktimer'],['wifidetect','wifi']];
+function mobileArrange(){
+  var mp=document.getElementById('mobilePages');
+  if(!mp)return;
+  document.getElementById('cardsContainer').style.display='none';
+  mp.style.display='block';
+  // 清空四屏，按固定编排分配 renderCards 克隆出的卡片
+  for(var p=0;p<4;p++){
+    var pg=document.getElementById('mp'+p);
+    var old=pg.querySelectorAll('.card');
+    for(var i=0;i<old.length;i++)old[i].remove();
+  }
+  var cards=document.getElementById('cardsContainer').querySelectorAll('.card');
+  for(var i=0;i<cards.length;i++){
+    var dc=cards[i].getAttribute('data-card');
+    for(var p=0;p<4;p++){
+      if(_PAGE_CARDS[p].indexOf(dc)>=0){document.getElementById('mp'+p).appendChild(cards[i]);break;}
+    }
+  }
+  // 模式条插入屏1 顶部（长通激活时）
+  var b=document.getElementById('modeBanner');
+  if(b)b.remove();
+  var m=document.getElementById('mp1');
+  if(_latch){
+    b=document.createElement('div');b.className='mode-banner';b.id='modeBanner';
+    b.innerHTML='<span class="mt">长通模式 · 主路常开</span><span class="mx" onclick="toggleLatch()">退出</span>';
+    m.insertBefore(b,m.firstChild);
+  }
+  // 24h 循环卡从更多设置页移入屏2（手机模式专属，DOM 原样搬移，交互逻辑不变）
+  var cycleCard=null,msCards=document.getElementById('moreSettingsM').querySelectorAll('.card');
+  for(var i=0;i<msCards.length;i++){
+    if(msCards[i].querySelector('#cycleTrack')){cycleCard=msCards[i];break;}
+  }
+  if(cycleCard){
+    cycleCard.classList.add('no-swipe');
+    cycleCard.querySelector('.card-title').innerHTML='24小时循环 <span style="font-size:10px;color:#c7c7cc;font-weight:400">拖空白创建 · 点块编辑</span>';
+    document.getElementById('mp2').appendChild(cycleCard);
+  }
+  // 手机版固定编排，隐藏"主页卡片排序"卡（桌面版保留排序功能）
+  var allMs=document.getElementById('moreSettingsM').querySelectorAll('.card');
+  for(var i=0;i<allMs.length;i++){
+    if(allMs[i].querySelector('#sortList')) allMs[i].style.display='none';
+  }
+  if(!_mInited){_mInited=true;initSwipe();}
+  applyPage();
+}
+function pageW(){return document.querySelector('.pages-viewport').clientWidth;}
+function applyPage(){var t=document.getElementById('mTrack');t.classList.remove('dragging');t.style.transform='translateX('+(-_mpg*pageW())+'px)';var d=document.querySelectorAll('#mobilePages .dot');for(var i=0;i<4;i++)d[i].classList.toggle('on',i===_mpg);}
+function goPage(i){_mpg=Math.max(0,Math.min(3,i));applyPage();}
+function canSwipe(e){
+  var t=e.target;
+  while(t){if(t.classList&&(t.classList.contains('no-swipe')||t.classList.contains('picker')||t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return false;t=t.parentElement;}
+  return true;
+}
+function initSwipe(){
+  var vp=document.querySelector('.pages-viewport');
+  vp.addEventListener('touchstart',function(e){
+    if(!canSwipe(e)){_mswipe.lock='skip';return;}
+    _mswipe.x0=e.touches[0].clientX;_mswipe.y0=e.touches[0].clientY;_mswipe.t0=Date.now();_mswipe.base=-_mpg*pageW();_mswipe.lock='';
+  },{passive:true});
+  vp.addEventListener('touchmove',function(e){
+    if(_mswipe.lock==='skip')return;
+    var dx=e.touches[0].clientX-_mswipe.x0,dy=e.touches[0].clientY-_mswipe.y0;
+    if(!_mswipe.lock){
+      if(Math.abs(dx)<12&&Math.abs(dy)<12)return;
+      _mswipe.lock=(Math.abs(dx)>Math.abs(dy))?'h':'v';
+      if(_mswipe.lock==='v')return;
+    }
+    if(_mswipe.lock==='h'){
+      e.preventDefault();
+      var x=_mswipe.base+dx;
+      if(x>0)x=x/3;
+      if(x<-3*pageW())x=-3*pageW()+(x+3*pageW())/3;
+      var t=document.getElementById('mTrack');t.classList.add('dragging');t.style.transform='translateX('+x+'px)';
+    }
+  },{passive:false});
+  vp.addEventListener('touchend',function(e){
+    if(_mswipe.lock!=='h'){_mswipe.lock='';applyPage();return;}
+    var dx=e.changedTouches[0].clientX-_mswipe.x0,dt=Date.now()-_mswipe.t0,v=dx/dt;
+    if(dx<-pageW()*0.3||v<-0.5)_mpg++;
+    else if(dx>pageW()*0.3||v>0.5)_mpg--;
+    _mpg=Math.max(0,Math.min(3,_mpg));
+    applyPage();_mswipe.lock='';
+  },{passive:true});
+  vp.addEventListener('mousedown',function(e){
+    if(!canSwipe(e)){_mswipe.lock='skip';return;}
+    _mswipe.x0=e.clientX;_mswipe.y0=e.clientY;_mswipe.t0=Date.now();_mswipe.base=-_mpg*pageW();_mswipe.lock='m';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',function(e){
+    if(_mswipe.lock!=='m')return;
+    var t=document.getElementById('mTrack');t.classList.add('dragging');t.style.transform='translateX('+(_mswipe.base+(e.clientX-_mswipe.x0))+'px)';
+  });
+  document.addEventListener('mouseup',function(e){
+    if(_mswipe.lock!=='m'){_mswipe.lock='';return;}
+    var dx=e.clientX-_mswipe.x0;
+    if(dx<-60)_mpg++;else if(dx>60)_mpg--;
+    _mpg=Math.max(0,Math.min(3,_mpg));
+    applyPage();_mswipe.lock='';
+  });
+}
+// ===== 检查更新（L1 检测 + L2 在线升级）=====
+function checkUpdateNow(){
+  var row=document.getElementById('updRow');
+  row.textContent='正在检查更新…';
+  fetch('/api/checkupdate?go=1').then(function(r){return r.json()}).then(function(d){
+    renderUpdateState(d);
+  }).catch(function(){row.textContent='检查失败：设备无响应';});
+}
+function doUpgradeNow(){
+  if(!confirm('开始在线升级？升级期间请勿断电，完成后设备自动重启（约 1-2 分钟）。'))return;
+  fetch('/api/checkupdate?go=2').catch(function(){});
+  var row=document.getElementById('updRow');
+  row.textContent='升级中，请勿断电… 设备将在完成后自动重启';
+  var n=0;
+  var t=setInterval(function(){
+    n++;
+    fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+      if(d.ver!==VERSION_STR){clearInterval(t);row.textContent='升级完成，当前版本 v'+d.ver;renderUpdateState({ok:true,av:false,lv:d.ver});}
+      else if(n>60){clearInterval(t);row.textContent='仍未重启，请检查网络后重试或改用 Web OTA';}
+    }).catch(function(){});
+  },5000);
+}
+function renderUpdateState(d){
+  var row=document.getElementById('updRow'),badge=document.getElementById('updBadge'),btn=document.getElementById('doUpdBtn');
+  row.innerHTML='当前版本 v'+VERSION_STR+(d.ok?' · 最新 '+d.lv:'');
+  if(d.av){
+    var lv=document.getElementById('updLv');if(lv)lv.textContent=d.lv;
+    badge.style.display='flex';
+    btn.style.display='block';
+  }else{
+    badge.style.display='none';btn.style.display='none';
+  }
 }
 
 function renderSortList(order){
@@ -2227,6 +2440,21 @@ function confirmReset(){
 function loadHistory(){
   fetch('/api/history').then(function(r){return r.json()}).then(function(d){
     if(!d.data) return;
+    // 过去 24 小时逐小时柱状图（v5.9）
+    if(d.hh){
+      var chart=document.getElementById('h24Chart');
+      if(chart){
+        var hmax=0;
+        for(var i=0;i<d.hh.length;i++){if(d.hh[i]>hmax)hmax=d.hh[i];}
+        if(hmax<0.01)hmax=0.01;
+        var html='';
+        for(var i=0;i<d.hh.length;i++){
+          var pct=Math.round((d.hh[i]/hmax)*92);
+          html+='<div class="hb'+(i===23?' now':'')+'" style="height:'+(pct<3?3:pct)+'%" title="-'+(23-i)+'h: '+d.hh[i].toFixed(3)+' kWh"></div>';
+        }
+        chart.innerHTML=html;
+      }
+    }
     var vals=d.data;
     var max=0;
     for(var i=0;i<vals.length;i++){if(vals[i]>max)max=vals[i];}

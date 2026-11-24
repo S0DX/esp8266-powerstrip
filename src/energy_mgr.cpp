@@ -2,6 +2,7 @@
 #include "config.h"
 #include "sy7t609.h"
 #include "gpio_mgr.h"
+#include "time_mgr.h"
 
 float EnergyManager::total_energy_ = 0;
 unsigned long EnergyManager::last_save_time_ = 0;
@@ -22,6 +23,14 @@ int EnergyManager::month_start_year_ = 0;
 int EnergyManager::month_start_month_ = 0;
 float EnergyManager::monthly_history_[3] = {0, 0, 0};
 float EnergyManager::last_saved_energy_ = 0;
+
+// 24h 逐小时（v5.9）
+float EnergyManager::hourly_[24] = {0};
+int EnergyManager::hourly_head_ = 0;
+int EnergyManager::hourly_count_ = 0;
+int EnergyManager::hourly_last_hour_ = -1;
+float EnergyManager::hourly_snapshot_ = 0;
+float EnergyManager::hourly_saved_total_ = 0;
 
 static void writeBufToEeprom(int addr, const uint8_t* buf, int len) {
     for (int i = 0; i < len; i++) {
@@ -112,6 +121,43 @@ void EnergyManager::init() {
 
     day_start_energy_ = total_energy_;
     day_start_time_ = millis();
+
+    // 24h 逐小时统计恢复（v5.9）：滚动最近 24 小时
+    uint8_t hhBuf[8] = {0};
+    for (int i = 0; i < 8; i++) {
+        hhBuf[i] = EEPROM.read(EEPROM_ENERGY_HOURLY_ADDR + i);
+    }
+    uint32_t hhMagic = ((uint32_t)hhBuf[0] << 24) | ((uint32_t)hhBuf[1] << 16) |
+                       ((uint32_t)hhBuf[2] << 8) | hhBuf[3];
+    if (hhMagic == ENERGY_HOURLY_MAGIC) {
+        hourly_last_hour_ = (int8_t)hhBuf[4];
+        hourly_head_ = (int8_t)hhBuf[5] % 24;
+        hourly_count_ = (int8_t)hhBuf[6];
+        if (hourly_count_ < 0 || hourly_count_ > 24) hourly_count_ = 0;
+        for (int h = 0; h < 24; h++) {
+            uint8_t v[4] = {0};
+            for (int i = 0; i < 4; i++) {
+                v[i] = EEPROM.read(EEPROM_ENERGY_HOURLY_ADDR + 8 + h * 4 + i);
+            }
+            memcpy(&hourly_[h], v, sizeof(float));
+            if (hourly_[h] < 0 || hourly_[h] > 99999) hourly_[h] = 0;
+        }
+        // saved_total 位于布局末尾：8 + 96 = 104 字节偏移
+        uint8_t sv[4] = {0};
+        for (int i = 0; i < 4; i++) {
+            sv[i] = EEPROM.read(EEPROM_ENERGY_HOURLY_ADDR + 104 + i);
+        }
+        memcpy(&hourly_saved_total_, sv, sizeof(float));
+        memcpy(&hourly_saved_total_, sv, sizeof(float));
+        // 当前桶恢复：saved 值 + (重启后的 total - 持久化时的 total)
+        float recovered = hourly_[hourly_head_] + (total_energy_ - hourly_saved_total_);
+        hourly_[hourly_head_] = (recovered > 0 && recovered < 99999) ? recovered : hourly_[hourly_head_];
+        hourly_snapshot_ = total_energy_;
+        Serial.printf("[Energy] Hourly stats restored: head=%d count=%d lastHour=%d\n",
+            hourly_head_, hourly_count_, hourly_last_hour_);
+    } else {
+        hourly_snapshot_ = total_energy_;
+    }
 }
 
 void EnergyManager::handle() {
@@ -178,6 +224,53 @@ void EnergyManager::handle() {
         }
         last_save_time_ = millis();
     }
+
+    // ===== 24h 逐小时统计（滚动最近 24 小时，v5.9）=====
+    // 小时源：墙钟优先（NTP/浏览器校时后），时间无效时退化为运行小时推算，
+    // 校时生效的瞬间会多翻一个空桶对齐墙钟，影响可忽略。
+    int curHour;
+    if (TimeManager::isValid()) {
+        time_t t = time(nullptr);
+        struct tm* ti = localtime(&t);
+        curHour = ti ? ti->tm_hour : (int)((millis() / 3600000UL) % 24);
+    } else {
+        curHour = (int)((millis() / 3600000UL) % 24);
+    }
+    if (curHour != hourly_last_hour_) {
+        if (hourly_last_hour_ >= 0) {
+            // 翻桶：推进 head（环形覆盖最旧桶），count 封顶 24
+            hourly_head_ = (hourly_head_ + 1) % 24;
+            if (hourly_count_ < 24) hourly_count_++;
+            hourly_[hourly_head_] = 0;
+        } else {
+            hourly_head_ = 0;
+            hourly_count_ = 1;
+            hourly_[0] = 0;
+        }
+        hourly_snapshot_ = total_energy_;
+        hourly_last_hour_ = curHour;
+        saveHourly();  // 整点一次 EEPROM 写（延迟提交）
+    }
+    if (hourly_count_ > 0) {
+        float cur = total_energy_ - hourly_snapshot_;
+        if (cur >= 0 && cur < 99999) hourly_[hourly_head_] = cur;
+    }
+}
+
+void EnergyManager::getHourlySeries(float* out24) {
+    // 时间升序输出：最早桶在前；count 不足 24 时前面补 0
+    for (int i = 0; i < 24; i++) {
+        if (i < 24 - hourly_count_) {
+            out24[i] = 0;
+        } else {
+            int idx = (hourly_head_ - (23 - i) + 48) % 24;
+            out24[i] = hourly_[idx];
+        }
+    }
+}
+
+int EnergyManager::getHourlyCount() {
+    return hourly_count_;
 }
 
 float EnergyManager::getTotalEnergy() {
@@ -245,16 +338,50 @@ void EnergyManager::saveHistory() {
     GPIOManager::requestEEPROMCommit();  // 延迟提交
 }
 
+void EnergyManager::saveHourly() {
+    uint8_t buf[4] = {(ENERGY_HOURLY_MAGIC >> 24) & 0xFF, (ENERGY_HOURLY_MAGIC >> 16) & 0xFF,
+                      (ENERGY_HOURLY_MAGIC >> 8) & 0xFF, ENERGY_HOURLY_MAGIC & 0xFF};
+    for (int i = 0; i < 4; i++) {
+        EEPROM.write(EEPROM_ENERGY_HOURLY_ADDR + i, buf[i]);
+    }
+    uint8_t meta[4] = {(uint8_t)hourly_last_hour_, (uint8_t)hourly_head_,
+                       (uint8_t)hourly_count_, 0};
+    for (int i = 0; i < 4; i++) {
+        EEPROM.write(EEPROM_ENERGY_HOURLY_ADDR + 4 + i, meta[i]);
+    }
+    for (int h = 0; h < 24; h++) {
+        uint8_t v[4] = {0};
+        memcpy(v, &hourly_[h], sizeof(float));
+        for (int i = 0; i < 4; i++) {
+            EEPROM.write(EEPROM_ENERGY_HOURLY_ADDR + 8 + h * 4 + i, v[i]);
+        }
+    }
+    hourly_saved_total_ = total_energy_;
+    uint8_t sv[4] = {0};
+    memcpy(sv, &hourly_saved_total_, sizeof(float));
+    for (int i = 0; i < 4; i++) {
+        EEPROM.write(EEPROM_ENERGY_HOURLY_ADDR + 104 + i, sv[i]);
+    }
+    GPIOManager::requestEEPROMCommit();  // 延迟提交
+}
+
 void EnergyManager::reset() {
     total_energy_ = 0;
     last_integration_time_ = 0;
     last_saved_energy_ = 0;
     for (int i = 0; i < 7; i++) history_[i] = 0;
     for (int i = 0; i < 3; i++) monthly_history_[i] = 0;
+    for (int i = 0; i < 24; i++) hourly_[i] = 0;
+    hourly_head_ = 0;
+    hourly_count_ = 0;
+    hourly_last_hour_ = -1;
+    hourly_snapshot_ = 0;
+    hourly_saved_total_ = 0;
     month_start_energy_ = 0;
     month_start_year_ = 0;
     month_start_month_ = 0;
     save();
     saveHistory();
     saveMonthlyHistory();
+    saveHourly();
 }
