@@ -1,0 +1,41 @@
+name: Release
+
+# 推送 v* tag 即自动构建并发布 Release：
+#   git tag v5.9.7 && git push origin v5.9.7
+# 之后手机端「一键升级」即可无线更新。换电脑无需安装任何构建环境。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run -e esp12e
+
+      - name: Collect firmware
+        run: |
+          mkdir -p dist
+          cp .pio/build/esp12e/firmware.bin "dist/firmware-${GITHUB_REF_NAME#v}.bin"
+          sha256sum "dist/firmware-${GITHUB_REF_NAME#v}.bin"
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.bin
+          generate_release_notes: true
+          fail_on_unmatched_files: true
