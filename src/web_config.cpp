@@ -123,6 +123,20 @@ void WebConfigServer::init() {
 
     server_->on("/", HTTP_GET, []() {
         log_req("pg-in");
+        // 缓存穿透：构建标识随每次刷写变化（版本 + 页面 gzip 长度），
+        // 访问根路径时若无当前标识则 302 跳到 /?b=<构建号>，避免手机浏览器
+        // 顽固缓存旧页面（X5 等内核会无视 no-cache），用户只需记住根域名
+        {
+            char bld[32];
+            snprintf(bld, sizeof(bld), "%s-%u", VERSION, (unsigned)sizeof(INDEX_HTML_GZ));
+            String reqB = server_->arg("b");
+            if (reqB != bld) {
+                server_->sendHeader("Cache-Control", "no-store");
+                server_->sendHeader("Location", String("/?b=") + bld);
+                server_->send(302, "text/plain", "");
+                return;
+            }
+        }
         WiFiManager::boostTxPower();  // P1: 页面访问时临时提升功率
         server_->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         server_->sendHeader("Pragma", "no-cache");

@@ -608,6 +608,8 @@ var VERSION_STR='';
 
 function init(){
   try{
+    // 服务端用 ?b=<构建号> 做缓存穿透；页面加载后清理地址栏参数（刷新时服务端会自动再跳一次）
+    try{if(location.search.indexOf('b=')>=0)history.replaceState(null,'','/');}catch(e){}
     renderCards(cardOrder);
     
     var scanBtn=document.getElementById('scanBtn');
