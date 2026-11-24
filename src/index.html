@@ -1057,18 +1057,24 @@ function renderCards(order){
 
 // ===== 手机版横滑分屏（v5.9）：桌面版保持纵向卡片流 =====
 var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
-var _mpg=0,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
-var _PAGE_CARDS=[['power','history'],['relay'],['quicktimer'],['wifidetect','wifi']];
+var _mpg=1,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
+// 分屏编排：页0 数据 · 页1 控制+设备信息（默认页）· 页2 定时 · 页3 人来上电
+var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect']];
 function mobileArrange(){
   var mp=document.getElementById('mobilePages');
   if(!mp)return;
   document.getElementById('cardsContainer').style.display='none';
   mp.style.display='block';
-  // 清空四屏，按固定编排分配 renderCards 克隆出的卡片
+  // 24h 循环卡：从更多设置页搬移到屏 2（唯一不在克隆集里的卡，每次渲染都要找回）
+  var cycleCard=null,allCards=document.querySelectorAll('.card');
+  for(var i=0;i<allCards.length;i++){
+    if(allCards[i].querySelector('#cycleTrack')){cycleCard=allCards[i];break;}
+  }
+  // 清空四屏（循环卡除外——它不在克隆集里，删了就找不回）
   for(var p=0;p<4;p++){
     var pg=document.getElementById('mp'+p);
     var old=pg.querySelectorAll('.card');
-    for(var i=0;i<old.length;i++)old[i].remove();
+    for(var i=0;i<old.length;i++){if(old[i]!==cycleCard)old[i].remove();}
   }
   var cards=document.getElementById('cardsContainer').querySelectorAll('.card');
   for(var i=0;i<cards.length;i++){
@@ -1086,14 +1092,9 @@ function mobileArrange(){
     b.innerHTML='<span class="mt">长通模式 · 主路常开</span><span class="mx" onclick="toggleLatch()">退出</span>';
     m.insertBefore(b,m.firstChild);
   }
-  // 24h 循环卡从更多设置页移入屏2（手机模式专属，DOM 原样搬移，交互逻辑不变）
-  var cycleCard=null,msCards=document.getElementById('moreSettingsM').querySelectorAll('.card');
-  for(var i=0;i<msCards.length;i++){
-    if(msCards[i].querySelector('#cycleTrack')){cycleCard=msCards[i];break;}
-  }
+  // 循环卡移入屏 2（首次搬移；后续渲染中保持，仅补 no-swipe 标记）
   if(cycleCard){
     cycleCard.classList.add('no-swipe');
-    cycleCard.querySelector('.card-title').innerHTML='24小时循环 <span style="font-size:10px;color:#c7c7cc;font-weight:400">拖空白创建 · 点块编辑</span>';
     document.getElementById('mp2').appendChild(cycleCard);
   }
   // 手机版固定编排，隐藏"主页卡片排序"卡（桌面版保留排序功能）
