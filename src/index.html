@@ -574,10 +574,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="card-title">固件更新</div>
 <div id="updRow" style="font-size:12px;color:#8e8e93">当前版本 <span id="updCur">--</span> · 未检查</div>
 <div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
-<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">自动检测每周一次；也可手动检查。在线升级期间请勿断电，失败不影响当前固件。</p>
+<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">检测通过浏览器直查 GitHub（每小时一次）。升级方式：下载新版本 bin 后用上方「固件升级」上传安装。</p>
 <div style="display:flex;gap:8px;margin-top:10px">
   <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
-  <button class="btn" id="doUpdBtn" style="width:auto;padding:8px 14px;flex:1;display:none" onclick="doUpgradeNow()">在线升级</button>
+  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="doUpgradeNow()">前往下载</button>
 </div>
 </div>
 
@@ -719,6 +719,7 @@ function update(){
       if(d.uav){var lv=document.getElementById('updLv');if(lv)lv.textContent=d.ulv;ub.style.display='flex';}
       else ub.style.display='none';
     }
+    browserAutoCheck();
     _latch=!!d.lt;
     var lt=document.getElementById('lt'); if(lt){if(_latch)lt.classList.add('on');else lt.classList.remove('on');}
     var rm=document.getElementById('rm');
@@ -1158,37 +1159,56 @@ function initSwipe(){
     applyPage();_mswipe.lock='';
   });
 }
-// ===== 检查更新（L1 检测 + L2 在线升级）=====
+// ===== 检查更新：浏览器直查 GitHub API（设备端 TLS 受 RAM 限制不可用）=====
+// 每小时最多查一次（localStorage 节流），跨页面共享
+function semverGt(a,b){
+  var pa=String(a).split('.'),pb=String(b).split('.');
+  for(var i=0;i<4;i++){
+    var x=parseInt(pa[i]||'0',10)||0,y=parseInt(pb[i]||'0',10)||0;
+    if(x!==y)return x>y;
+  }
+  return false;
+}
 function checkUpdateNow(){
   var row=document.getElementById('updRow');
-  row.textContent='正在检查更新…';
-  fetch('/api/checkupdate?go=1').then(function(r){return r.json()}).then(function(d){
-    renderUpdateState(d);
-  }).catch(function(){row.textContent='检查失败：设备无响应';});
+  row.textContent='正在检查更新（通过 GitHub）…';
+  fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',{cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.tag_name){row.textContent='检查失败：GitHub 无法访问（国内网络可能受限），请到 Release 页手动查看';return;}
+      var lv=String(d.tag_name).replace(/^v/,'');
+      var av=semverGt(lv,VERSION_STR);
+      renderUpdateState({ok:true,av:av,lv:lv});
+      try{localStorage.setItem('ps_upd_latest',lv);localStorage.setItem('ps_upd_time',String(Date.now()));}catch(e){}
+    })
+    .catch(function(){row.textContent='检查失败：GitHub 无法访问（国内网络可能受限），请到 Release 页手动查看';});
+}
+function browserAutoCheck(){
+  if(!VERSION_STR)return;
+  var last=0;
+  try{last=parseInt(localStorage.getItem('ps_upd_time')||'0',10)||0;}catch(e){}
+  if(Date.now()-last<3600000){
+    var lv='';
+    try{lv=localStorage.getItem('ps_upd_latest')||'';}catch(e){}
+    if(lv&&semverGt(lv,VERSION_STR)){
+      renderUpdateState({ok:true,av:true,lv:lv});
+    }
+    return;
+  }
+  checkUpdateNow();
 }
 function doUpgradeNow(){
-  if(!confirm('开始在线升级？升级期间请勿断电，完成后设备自动重启（约 1-2 分钟）。'))return;
-  fetch('/api/checkupdate?go=2').catch(function(){});
-  var row=document.getElementById('updRow');
-  row.textContent='升级中，请勿断电… 设备将在完成后自动重启';
-  var n=0;
-  var t=setInterval(function(){
-    n++;
-    fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
-      if(d.ver!==VERSION_STR){clearInterval(t);row.textContent='升级完成，当前版本 v'+d.ver;renderUpdateState({ok:true,av:false,lv:d.ver});}
-      else if(n>60){clearInterval(t);row.textContent='仍未重启，请检查网络后重试或改用 Web OTA';}
-    }).catch(function(){});
-  },5000);
+  alert('本设备 RAM 有限，不支持在线直接刷写。\n请从 GitHub Release 页下载新版本 bin，\n再通过「固件升级」上传安装。');
+  window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');
 }
 function renderUpdateState(d){
-  var row=document.getElementById('updRow'),badge=document.getElementById('updBadge'),btn=document.getElementById('doUpdBtn');
+  var row=document.getElementById('updRow'),badge=document.getElementById('updBadge');
   row.innerHTML='当前版本 v'+VERSION_STR+(d.ok?' · 最新 '+d.lv:'');
   if(d.av){
     var lv=document.getElementById('updLv');if(lv)lv.textContent=d.lv;
     badge.style.display='flex';
-    btn.style.display='block';
   }else{
-    badge.style.display='none';btn.style.display='none';
+    badge.style.display='none';
   }
 }
 

@@ -118,13 +118,8 @@
 #define EEPROM_ENERGY_HOURLY_ADDR  751  // 751-858
 #define ENERGY_HOURLY_MAGIC        0x45483234UL  // "EH24"
 
-// ===== 自动检测更新（v5.9） =====
-#define UPDATE_CHECK_INTERVAL_MS   (7UL * 24 * 3600 * 1000)  // 1 周
-#define UPDATE_FIRST_CHECK_MS      60000UL                   // 开机 1 分钟后首查
-// 清单源顺序尝试：jsdelivr 三大入口（国内可达性随时段波动，多源容错）
-#define UPDATE_MANIFEST_URL        "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
-#define UPDATE_MANIFEST_URL2       "https://fastly.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
-#define UPDATE_MANIFEST_URL3       "https://testingcf.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json"
+// 注：自动检测更新由前端浏览器直查 GitHub API 实现（设备端 TLS 受 RAM 限制
+// 不可用，实测空闲 heap ~11KB 而 BearSSL 握手需 ~22KB），设备端不参与检测。
 
 // ===== 时间同步参数 =====
 // 时区固定东八区（CST-8），与 configTime 的第二/三参数语义保持一致

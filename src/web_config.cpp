@@ -9,7 +9,6 @@
 #include "sy7t609.h"
 #include "mqtt_mgr.h"
 #include "time_mgr.h"
-#include "update_checker.h"
 #include <EEPROM.h>
 #include <WiFiClient.h>
 #include <ESP8266HTTPUpdateServer.h>
@@ -233,7 +232,7 @@ void WebConfigServer::init() {
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
             "\"de\":%s,\"dt\":\"%s\",\"dl\":%s,\"dr\":%d,\"dm\":\"%s\",\"dp\":%s,\"pc\":%s,\"ds\":%d,\"ts\":%d,\"om\":%s,\"bd\":%s,"
             "\"mqe\":%s,\"mqs\":\"%s\",\"mqp\":%d,\"mqu\":\"%s\",\"mqpw\":\"%s\","
-            "\"ap\":\"%s\",\"aps\":\"%s\",\"host\":\"%s\",\"cv\":%d,\"bat\":%s,\"acap\":%s,\"wtpl\":%s,\"syslog\":%s,\"uav\":%s,\"ulv\":\"%s\",\"rst\":\"%s\"}",
+            "\"ap\":\"%s\",\"aps\":\"%s\",\"host\":\"%s\",\"cv\":%d,\"bat\":%s,\"acap\":%s,\"wtpl\":%s,\"syslog\":%s,\"rst\":\"%s\"}",
             WiFiManager::isConnected() ? "true" : "false",
             ip.c_str(),
             WiFiManager::getCurrentSSID().c_str(),
@@ -301,8 +300,6 @@ void WebConfigServer::init() {
             WiFiManager::isAutoCloseAPEnabled() ? "true" : "false",
             WiFiManager::isWiFiTxPowerLimited() ? "true" : "false",
             log_buffer_is_enabled() ? "true" : "false",
-            UpdateChecker::available() ? "true" : "false",
-            UpdateChecker::latestVersion().c_str(),
             ESP.getResetReason().c_str()
         );
         int len = strlen(status_buf);
@@ -889,37 +886,11 @@ void WebConfigServer::init() {
         server_->send(200, "application/json", response);
     });
 
-    // 自动检测更新：go=1 手动检查（同步，最长 ~8s）；go=2 在线升级（阻塞，成功自动重启）
+    // 版本查询：设备端 TLS 受 RAM 限制不可用，更新检测由前端浏览器直查
+    // GitHub API（CORS 允许）后与 cur 比对
     server_->on("/api/checkupdate", HTTP_GET, []() {
-        String go = server_->arg("go");
-        if (go == "1") {
-            bool ok = UpdateChecker::checkNow();
-            char buf[160];
-            snprintf(buf, sizeof(buf),
-                "{\"ok\":%s,\"av\":%s,\"lv\":\"%s\",\"cur\":\"%s\",\"err\":\"%s\"}",
-                ok ? "true" : "false",
-                UpdateChecker::available() ? "true" : "false",
-                UpdateChecker::latestVersion().c_str(), VERSION,
-                UpdateChecker::lastError().c_str());
-            server_->send(200, "application/json", buf);
-            return;
-        }
-        if (go == "2") {
-            if (!UpdateChecker::available() && UpdateChecker::latestVersion().length() == 0) {
-                server_->send(200, "application/json", "{\"ok\":false,\"err\":\"check first\"}");
-                return;
-            }
-            server_->send(200, "application/json", "{\"ok\":true,\"msg\":\"upgrading, device will reboot\"}");
-            delay(500);  // 让响应发完，升级期间连接会断开
-            UpdateChecker::doUpgrade();  // 失败则设备继续运行，前端通过超时感知
-            return;
-        }
-        char buf[160];
-        snprintf(buf, sizeof(buf),
-            "{\"ok\":true,\"av\":%s,\"lv\":\"%s\",\"cur\":\"%s\",\"err\":\"%s\"}",
-            UpdateChecker::available() ? "true" : "false",
-            UpdateChecker::latestVersion().c_str(), VERSION,
-            UpdateChecker::lastError().c_str());
+        char buf[96];
+        snprintf(buf, sizeof(buf), "{\"ok\":true,\"cur\":\"%s\"}", VERSION);
         server_->send(200, "application/json", buf);
     });
 
