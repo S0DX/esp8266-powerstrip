@@ -733,7 +733,6 @@ function update(){
       if(d.uav){var lv=document.getElementById('updLv');if(lv)lv.textContent=d.ulv;ub.style.display='flex';}
       else ub.style.display='none';
     }
-    browserAutoCheck();
     _latch=!!d.lt;
     var lt=document.getElementById('lt'); if(lt){if(_latch)lt.classList.add('on');else lt.classList.remove('on');}
     var rm=document.getElementById('rm');
@@ -1294,33 +1293,14 @@ function checkUpdateNow(){
   probeUpdate(function(d){
     _checkingNow=false;
     if(!d.found){
-      row.textContent=d.err||'未发现新版本';
-      frontLog('CHECK miss err='+(d.err||'none'));
+      row.textContent=d.err?('检查失败：'+d.err):('当前已是最新版本 v'+VERSION_STR);
+      frontLog('CHECK miss err='+(d.err||'up-to-date'));
       return;
     }
     frontLog('CHECK hit v'+d.ver);
     renderUpdateState({ok:true,av:true,lv:d.ver});
     row.innerHTML='当前版本 v'+VERSION_STR+' · 最新 '+d.ver+'（校验值已取得）';
   });
-}
-var _autoCheckedThisPage=false;
-function browserAutoCheck(){
-  if(!VERSION_STR)return;
-  // 页面生命周期内只自动检测一次：部分内核（微信 X5/隐私模式）禁用 localStorage，
-  // 仅靠 localStorage 节流会造成每 3s 轮询都触发探测的请求洪水
-  if(_autoCheckedThisPage)return;
-  _autoCheckedThisPage=true;
-  var last=0;
-  try{last=parseInt(localStorage.getItem('ps_upd_time')||'0',10)||0;}catch(e){}
-  if(Date.now()-last<3600000){
-    var lv='';
-    try{lv=localStorage.getItem('ps_upd_latest')||'';}catch(e){}
-    if(lv&&semverGt(lv,VERSION_STR)){
-      renderUpdateState({ok:true,av:true,lv:lv});
-    }
-    return;
-  }
-  checkUpdateNow();
 }
 function doUpgradeNow(){
   autoUpgradeFull();
@@ -1339,11 +1319,12 @@ function probeUpdate(cb){
   frontLog('PROBE start cur='+VERSION_STR);
   var cands=nextVersions(VERSION_STR,5);
   var best=null,bestSha='';
-  var left=cands.length;
+  var left=cands.length,netErr=0,httpOk=0;
   for(var i=0;i<cands.length;i++){
     (function(v){
       fetch(CDN+'v'+v+'/dist/firmware-'+v+'.bin.sha256',{cache:'no-store'})
         .then(function(r){
+          httpOk++;
           frontLog('PROBE v'+v+' http='+r.status);
           return r.ok?r.text():null;
         })
@@ -1351,13 +1332,15 @@ function probeUpdate(cb){
           if(t&&t.length>=64){best=v;bestSha=t.trim().split(/\s+/)[0];frontLog('PROBE v'+v+' HIT');}
         })
         .catch(function(e){
+          netErr++;
           frontLog('PROBE v'+v+' ERR '+(e&&e.message?e.message:'fetch-fail'));
         })
         .then(function(){
           left--;
           if(left===0){
             if(best){frontLog('PROBE final v'+best+' sha='+bestSha.substring(0,16));cb({found:true,ver:best,sha256:bestSha});}
-            else {frontLog('PROBE final MISS');cb({found:false,err:'探测 '+cands.join(', ')+' 均不存在或不可达'});}
+            else if(netErr>=cands.length){frontLog('PROBE final NETER'+(0));cb({found:false,err:'网络不可达，无法检测更新'});}
+            else {frontLog('PROBE final up-to-date');cb({found:false,err:null});}
           }
         });
     })(cands[i]);
@@ -1376,9 +1359,9 @@ function autoUpgradeFull(){
   msg.textContent='探测新版本（jsDelivr）…';
   probeUpdate(function(d){
     if(!d.found){
-      msg.textContent='未发现新版本或网络不可达';
+      msg.textContent=d.err?('升级失败：'+d.err):('当前已是最新版本 v'+VERSION_STR+'，无需升级');
       bar.style.width='0%';
-      frontLog('UPG abort no-version');
+      frontLog('UPG abort '+(d.err||'up-to-date'));
       _upgrading=false;
       return;
     }
