@@ -1,6 +1,6 @@
 {
-  "v": "5.9.4",
-  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.4/dist/firmware-v5.9.4.bin",
-  "notes": "page dots moved into header bar, firmware card cleanup, manual OTA button relocated",
-  "sha256": "58056390c981619e06b60ce014f4f72774ee27b511a30852cc4ad89954b32aa1"
+  "v": "5.9.5",
+  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.5/dist/firmware-v5.9.5.bin",
+  "notes": "OTA manifest (documentation/fallback only; one-tap upgrade now reads release metadata via GitHub API directly)",
+  "sha256": "4161ea00c17595aee599aa4efed7d69bb226a61dad49a5d8130451ab6d5048e6"
 }

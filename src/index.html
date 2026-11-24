@@ -1335,6 +1335,120 @@ function doUpgradeNow(){
 function autoUpgradeFull(){
   if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB，走手机/电脑网络）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
   var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
+  var tag='';
+  prog.style.display='block';bar.style.width='0%';
+  msg.textContent='查询 GitHub 最新版本…';
+  fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error('GitHub HTTP '+r.status);return r.json();})
+    .then(function(rel){
+      tag=String(rel.tag_name||'').replace(/^v/,'');
+      if(!tag)throw new Error('无版本信息');
+      if(!semverGt(tag,VERSION_STR)){
+        msg.textContent='已是最新版本 v'+VERSION_STR+'，无需升级';
+        prog.style.display='none';
+        return null;
+      }
+      var binUrl='',digest='',size=0;
+      if(rel.assets){for(var i=0;i<rel.assets.length;i++){
+        if(/\.bin$/.test(rel.assets[i].name)){
+          binUrl='https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@'+rel.tag_name+'/dist/'+rel.assets[i].name;
+          digest=(rel.assets[i].digest||'').replace(/^sha256:/,'');
+          size=rel.assets[i].size||0;
+        }
+      }}
+      if(!binUrl)binUrl='https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@'+rel.tag_name+'/dist/firmware-'+tag+'.bin';
+      msg.textContent='下载固件 v'+tag+' …';
+      return fetch(binUrl,{cache:'no-store'}).then(function(res){
+        if(!res.ok)throw new Error('固件 HTTP '+res.status);
+        var cl=parseInt(res.headers.get('content-length')||'0',10)||size;
+        var reader=res.body.getReader();
+        var chunks=[],loaded=0;
+        function pump(){
+          return reader.read().then(function(r){
+            if(r.done)return new Blob(chunks,{type:'application/octet-stream'});
+            chunks.push(r.value);loaded+=r.value.length;
+            if(cl)bar.style.width=Math.round(loaded/cl*45)+'%';
+            msg.textContent='下载固件 v'+tag+' … '+Math.round(loaded/1024)+'KB';
+            return pump();
+          });
+        }
+        return pump().then(function(blob){
+          bar.style.width='50%';
+          if(size&&blob.size!==size)throw new Error('文件大小不符（'+blob.size+'≠'+size+'）');
+          if(!digest)throw new Error('发布资产无校验值，改用手动流程');
+          msg.textContent='校验 SHA-256 …';
+          return new Promise(function(resolve,reject){
+            var fr=new FileReader();
+            fr.onload=function(e){
+              var hex=sha256Hex(new Uint8Array(e.target.result));
+              if(hex!==digest){reject(new Error('校验不符，已中止升级'));return;}
+              bar.style.width='55%';
+              msg.textContent='校验通过，上传到设备…';
+              resolve(blob);
+            };
+            fr.onerror=function(){reject(new Error('文件读取失败'));};
+            fr.readAsArrayBuffer(blob);
+          });
+        });
+      });
+    })
+    .then(function(blob){
+      if(!blob)return;
+      var fd=new FormData();
+      fd.append('file',blob,'firmware-'+tag+'.bin');
+      var xhr=new XMLHttpRequest();
+      xhr.open('POST','/update',true);
+      xhr.setRequestHeader('Authorization','Basic '+btoa('admin:admin'));
+      xhr.upload.onprogress=function(e){
+        if(e.lengthComputable){
+          bar.style.width=(55+Math.round(e.loaded/e.total*40))+'%';
+          msg.textContent='上传到设备 '+Math.round(e.loaded/e.total*100)+'% · 写入 flash 后自动重启';
+        }
+      };
+      xhr.onload=function(){
+        if(xhr.status===200||xhr.status===302){
+          bar.style.width='100%';
+          msg.textContent='上传完成，设备写入中并重启，等待设备上线…';
+          pollAfterUpgrade();
+        }else{
+          msg.textContent='上传失败：HTTP '+xhr.status;
+        }
+      };
+      xhr.onerror=function(){msg.textContent='上传失败：网络错误';};
+      xhr.send(fd);
+    })
+    .catch(function(e){
+      msg.textContent='升级失败：'+(e&&e.message?e.message:'未知错误');
+      bar.style.width='0%';
+    });
+}
+function pollAfterUpgrade(){
+  var msg=document.getElementById('upgMsg');
+  var n=0;
+  var t=setInterval(function(){
+    n++;
+    fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+      if(d.ver!==VERSION_STR){
+        clearInterval(t);
+        VERSION_STR=d.ver;
+        msg.textContent='升级成功！当前版本 v'+d.ver+'（即将刷新页面加载新界面）';
+        setTimeout(function(){location.reload();},1500);
+      }else if(n>40){
+        clearInterval(t);
+        msg.textContent='设备已上线但版本未变化——刷写可能未生效，请核对固件文件';
+      }
+    }).catch(function(){
+      if(n>40){clearInterval(t);msg.textContent='设备长时间未上线，请检查电源与网络';}
+    });
+  },3000);
+}
+function doUpgradeNow(){
+  autoUpgradeFull();
+}
+// 一键无感升级：jsDelivr 清单 → 下载 bin（CORS 可用）→ SHA-256 校验 → 局域网上传 → 等待重启
+function autoUpgradeFull(){
+  if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB，走手机/电脑网络）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
+  var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
   var mfV='';
   prog.style.display='block';bar.style.width='0%';
   msg.textContent='获取版本清单…';
