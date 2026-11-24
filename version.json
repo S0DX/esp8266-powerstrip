@@ -1,6 +1,6 @@
 {
-  "v": "5.9.1",
-  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.1/dist/firmware-v5.9.1.bin",
-  "notes": "one-tap browser-side OTA upgrade, scrollbar fix",
-  "sha256": "d8ad838d69cbe0bbfe9190b775d377294458bf2bc722657cc908aceaa2002080"
+  "v": "5.9.2",
+  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.2/dist/firmware-v5.9.2.bin",
+  "notes": "status poll backoff, touch-action fix, local-upload entry removed (use System Settings firmware upgrade)",
+  "sha256": "1aa66c2ea9f8ba703d3509e2b4e0b24288e74346d05bd75a1d09d511a8855d60"
 }
