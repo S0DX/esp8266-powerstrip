@@ -139,7 +139,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="toggle" id="lk"></div>
 </div>
 <div class="switch-row">
-<span style="font-size:15px">拔除断电<span style="font-size:11px;color:#8e8e93;display:block;margin-top:2px">功率低于阈值自动关闭</span></span>
+<span style="font-size:15px">拔除断电<span style="font-size:11px;color:#8e8e93;display:block;margin-top:2px">功率低于阈值自动关闭 · 长通下仅关副路</span></span>
 <div class="toggle" id="pwrOffHome" onclick="togglePowerOffHome()"></div>
 </div>
 </div>
@@ -718,9 +718,10 @@ function update(){
 
     var pt=document.getElementById('pwrOffToggle');
     if(pt){if(d.pe)pt.classList.add('on');else pt.classList.remove('on');}
-    syncPowerOffHome(d.pe && !_latch);
+    // 拔除断电在长通下仍可用（检测到拔除只关从继电器），显示真实状态不置灰
+    syncPowerOffHome(d.pe);
     var ph=document.getElementById('pwrOffHome');
-    if(ph) ph.style.opacity=_latch?'.45':'';
+    if(ph) ph.style.opacity='';
     var pth=document.getElementById('pwrThresh');
     if(pth && d.pt !== undefined && document.activeElement !== pth) pth.value=d.pt;
 
@@ -1895,7 +1896,6 @@ function togglePowerOff(){
 }
 
 function togglePowerOffHome(){
-  if(latchBlocked())return;
   var pt=document.getElementById('pwrOffHome');
   if(!pt)return;
   var en=!pt.classList.contains('on');
