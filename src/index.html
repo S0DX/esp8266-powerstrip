@@ -1279,11 +1279,15 @@ function semverGt(a,b){
 function frontLog(m){
   try{fetch('/api/frontlog?m='+encodeURIComponent(String(m).substring(0,96)),{cache:'no-store'});}catch(e){}
 }
+var _checkingNow=false;
 function checkUpdateNow(){
+  if(_checkingNow)return;
+  _checkingNow=true;
   var row=document.getElementById('updRow');
   row.textContent='正在检查更新（jsDelivr 探测）…';
   frontLog('CHECK start ver='+VERSION_STR);
   probeUpdate(function(d){
+    _checkingNow=false;
     if(!d.found){
       row.textContent=d.err||'未发现新版本';
       frontLog('CHECK miss err='+(d.err||'none'));
@@ -1294,8 +1298,13 @@ function checkUpdateNow(){
     row.innerHTML='当前版本 v'+VERSION_STR+' · 最新 '+d.ver+'（校验值已取得）';
   });
 }
+var _autoCheckedThisPage=false;
 function browserAutoCheck(){
   if(!VERSION_STR)return;
+  // 页面生命周期内只自动检测一次：部分内核（微信 X5/隐私模式）禁用 localStorage，
+  // 仅靠 localStorage 节流会造成每 3s 轮询都触发探测的请求洪水
+  if(_autoCheckedThisPage)return;
+  _autoCheckedThisPage=true;
   var last=0;
   try{last=parseInt(localStorage.getItem('ps_upd_time')||'0',10)||0;}catch(e){}
   if(Date.now()-last<3600000){
@@ -1350,8 +1359,11 @@ function probeUpdate(cb){
   }
 }
 // 一键升级：探测（jsDelivr，国内可达）→ 下载 → SHA-256 校验 → 上传
+var _upgrading=false;
 function autoUpgradeFull(){
+  if(_upgrading)return;
   if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
+  _upgrading=true;
   var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
   prog.style.display='block';bar.style.width='0%';
   var ua=(navigator.userAgent||'').substring(0,60);
@@ -1362,6 +1374,7 @@ function autoUpgradeFull(){
       msg.textContent='未发现新版本或网络不可达';
       bar.style.width='0%';
       frontLog('UPG abort no-version');
+      _upgrading=false;
       return;
     }
     var tag=d.ver;
@@ -1373,6 +1386,7 @@ function autoUpgradeFull(){
         msg.textContent='升级失败：'+em;
         bar.style.width='0%';
         frontLog('UPG FAIL '+em);
+        _upgrading=false;
       });
   });
 }
