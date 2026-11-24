@@ -103,13 +103,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .cycle-txt-btn{background:none;border:none;font-size:15px;font-family:inherit;cursor:pointer;padding:8px 2px;font-weight:400;-webkit-tap-highlight-color:transparent}
 .cycle-empty{font-size:13px;color:#c7c7cc;text-align:center;line-height:36px}
 /* ===== 手机版横滑分屏（v5.9） ===== */
-#mobilePages{display:none;height:calc(100vh - 46px)}
+#mobilePages{display:none;height:calc(100vh - 46px);display:none;flex-direction:column}
+#mobilePages .dots{display:flex;justify-content:center;gap:8px;padding:9px 0;flex-shrink:0;background:#f5f5f7}
+#mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
+#mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
 #mobilePages .pages-viewport{height:100%;overflow:hidden;position:relative}
 #mobilePages .pages-track{display:flex;width:400%;height:100%;transition:transform .28s cubic-bezier(.3,.8,.3,1);will-change:transform}
 #mobilePages .pages-track.dragging{transition:none}
 #mobilePages .page{width:25%;height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 64px;box-sizing:border-box}
 #mobilePages .page::-webkit-scrollbar{display:none}
-#mobilePages .dots{display:flex;justify-content:center;gap:8px;padding:9px 0 11px;background:#f5f5f7;position:absolute;bottom:0;left:0;right:0}
+#mobilePages .dots.top{position:static}
 #mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
 #mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
 .mode-banner{background:#faeeda;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -245,20 +248,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 
 <!-- ======== 手机版横滑分屏（v5.9）：桌面版隐藏，卡片由 renderCards 分配 ======== -->
 <div id='mobilePages'>
+  <div class='dots top'>
+    <span class='dot on' onclick='goPage(0)'></span>
+    <span class='dot' onclick='goPage(1)'></span>
+    <span class='dot' onclick='goPage(2)'></span>
+    <span class='dot' onclick='goPage(3)'></span>
+  </div>
   <div class='pages-viewport'>
     <div class='pages-track' id='mTrack'>
       <div class='page' id='mp0'></div>
       <div class='page' id='mp1'></div>
       <div class='page' id='mp2'></div>
       <div class='page' id='mp3'>
-        <div class='more-row' onclick='showMoreSettings()'><span>更多设置</span><span style='color:#c7c7cc;font-weight:400'>›</span></div>
+        <div class='card' id='deviceInfoCard' style='text-align:center'>
+          <div class='card-title'>设备信息</div>
+          <div style='font-size:13px;font-weight:500;color:#2c2c2a'>Smart Power Strip v<span class='verTxt'>--</span></div>
+          <div style='font-size:11px;color:#8e8e93;margin-top:5px'>项目与固件：<a href='https://github.com/S0DX/esp8266-powerstrip' target='_blank' style='color:#007aff;text-decoration:none'>github.com/S0DX/esp8266-powerstrip</a></div>
+          <div style='font-size:11px;color:#8e8e93;margin-top:2px'>作者：S0DX</div>
+          <button class='btn' onclick='showMoreSettings()' style='margin-top:10px'>更多设置</button>
+        </div>
       </div>
-    </div>
-    <div class='dots'>
-      <span class='dot on' onclick='goPage(0)'></span>
-      <span class='dot' onclick='goPage(1)'></span>
-      <span class='dot' onclick='goPage(2)'></span>
-      <span class='dot' onclick='goPage(3)'></span>
     </div>
   </div>
 </div>
@@ -723,6 +732,8 @@ function update(){
     var ver=document.getElementById('ver'); if(ver) ver.textContent='V'+d.ver;
     VERSION_STR=d.ver||VERSION_STR;
     var fc=document.getElementById('footerVer'); if(fc)fc.textContent=d.ver;
+    var vts=document.querySelectorAll('.verTxt');
+    for(var i=0;i<vts.length;i++)vts[i].textContent=d.ver;
     var uc=document.getElementById('updCur'); if(uc)uc.textContent=d.ver;
     var ub=document.getElementById('updBadge');
     if(ub){
@@ -1080,11 +1091,12 @@ function mobileArrange(){
   for(var i=0;i<allCards.length;i++){
     if(allCards[i].querySelector('#cycleTrack')){cycleCard=allCards[i];break;}
   }
-  // 清空四屏（循环卡除外——它不在克隆集里，删了就找不回）
+  // 清空四屏（循环卡与设备信息卡除外——它们不在克隆集里，删了就找不回）
+  var infoCard=document.getElementById('deviceInfoCard');
   for(var p=0;p<4;p++){
     var pg=document.getElementById('mp'+p);
     var old=pg.querySelectorAll('.card');
-    for(var i=0;i<old.length;i++){if(old[i]!==cycleCard)old[i].remove();}
+    for(var i=0;i<old.length;i++){if(old[i]!==cycleCard&&old[i]!==infoCard)old[i].remove();}
   }
   var cards=document.getElementById('cardsContainer').querySelectorAll('.card');
   for(var i=0;i<cards.length;i++){
@@ -1112,10 +1124,9 @@ function mobileArrange(){
   for(var i=0;i<allMs.length;i++){
     if(allMs[i].querySelector('#sortList')) allMs[i].style.display='none';
   }
+  // 设备信息卡保持在页 3 最底部（克隆卡 appendChild 会排到它前面）
+  if(infoCard)document.getElementById('mp3').appendChild(infoCard);
   if(!_mInited){_mInited=true;initSwipe();}
-  // 手机版"更多设置"入口保持在页 3 最底部（卡片分配后重排一次）
-  var mr=document.querySelector('#mp3 .more-row');
-  if(mr)document.getElementById('mp3').appendChild(mr);
   applyPage();
 }
 function pageW(){return document.querySelector('.pages-viewport').clientWidth;}
