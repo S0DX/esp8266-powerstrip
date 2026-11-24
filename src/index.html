@@ -111,7 +111,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 #mobilePages .pages-track{display:flex;width:400%;height:100%;transition:transform .28s cubic-bezier(.3,.8,.3,1);will-change:transform}
 #mobilePages .pages-track.dragging{transition:none}
 #mobilePages .page{width:25%;height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 64px;box-sizing:border-box}
-#mobilePages .page::-webkit-scrollbar{display:none}
+#mobilePages .page::-webkit-scrollbar{display:none;width:0;height:0}
+#mobilePages .page{scrollbar-width:none;-ms-overflow-style:none}
+#mobilePages .picker .col::-webkit-scrollbar{display:none;width:0;height:0}
+#mobilePages .picker .col{scrollbar-width:none}
+pre::-webkit-scrollbar{width:0;height:0;display:none}
+pre{scrollbar-width:none}
 #mobilePages .dots.top{position:static}
 #mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
 #mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
@@ -577,10 +582,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="card-title">固件更新</div>
 <div id="updRow" style="font-size:12px;color:#8e8e93">当前版本 <span id="updCur">--</span> · 未检查</div>
 <div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
-<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">检测由本页浏览器直查 GitHub（每小时一次）。升级流程：下载新版本 bin → 从本页上传到设备（局域网直传，不占用设备内存）。</p>
+<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">一键升级：浏览器自动下载固件（jsDelivr CDN）→ SHA-256 校验 → 局域网上传到设备 → 等待重启，全程无需手动操作。</p>
 <div style="display:flex;gap:8px;margin-top:10px">
   <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
-  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="downloadLatest()">下载最新固件</button>
+  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="autoUpgradeFull()">一键升级</button>
 </div>
 <div style="border-top:1px solid #e5e5ea;margin-top:12px;padding-top:12px">
   <button class="btn" style="width:100%" onclick="document.getElementById('updFile').click()">从本地文件升级</button>
@@ -1283,8 +1288,79 @@ function pollAfterUpgrade(){
   },3000);
 }
 function doUpgradeNow(){
-  alert('升级流程：\n1. 点「下载最新固件」，浏览器下载 bin 文件\n2. 点「从本地文件升级」选择刚下载的文件\n3. 页面自动上传到设备并等待重启');
-  downloadLatest();
+  autoUpgradeFull();
+}
+// 一键无感升级：jsDelivr 清单 → 下载 bin（CORS 可用）→ SHA-256 校验 → 局域网上传 → 等待重启
+function autoUpgradeFull(){
+  if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB，走手机/电脑网络）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
+  var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
+  var mfV='';
+  prog.style.display='block';bar.style.width='0%';
+  msg.textContent='获取版本清单…';
+  fetch('https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@main/version.json',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error('清单 HTTP '+r.status);return r.json();})
+    .then(function(mf){
+      if(!mf||!mf.v||!mf.bin)throw new Error('清单字段缺失');
+      mfV=mf.v;
+      if(!semverGt(mf.v,VERSION_STR)){msg.textContent='已是最新版本 v'+VERSION_STR+'，无需升级';prog.style.display='none';return;}
+      msg.textContent='下载固件 v'+mf.v+' …';
+      return fetch(mf.bin,{cache:'no-store'}).then(function(res){
+        if(!res.ok)throw new Error('固件 HTTP '+res.status);
+        var cl=parseInt(res.headers.get('content-length')||'0',10);
+        var reader=res.body.getReader();
+        var chunks=[],loaded=0;
+        function pump(){
+          return reader.read().then(function(r){
+            if(r.done)return new Blob(chunks,{type:'application/octet-stream'});
+            chunks.push(r.value);loaded+=r.value.length;
+            if(cl)bar.style.width=Math.round(loaded/cl*45)+'%';
+            msg.textContent='下载固件 v'+mf.v+' … '+Math.round(loaded/1024)+'KB';
+            return pump();
+          });
+        }
+        return pump().then(function(blob){
+          bar.style.width='50%';
+          msg.textContent='校验 SHA-256 …';
+          return crypto.subtle.digest('SHA-256',blob).then(function(hash){
+            var hex='',arr=new Uint8Array(hash);
+            for(var i=0;i<arr.length;i++)hex+=('0'+arr[i].toString(16)).slice(-2);
+            if(mf.sha256&&hex!==mf.sha256)throw new Error('校验不符，已中止升级');
+            bar.style.width='55%';
+            msg.textContent='校验通过，上传到设备…';
+            return blob;
+          });
+        });
+      });
+    })
+    .then(function(blob){
+      if(!blob)return;  // 已是最新版
+      var fd=new FormData();
+      fd.append('file',blob,'firmware-'+mfV+'.bin');
+      var xhr=new XMLHttpRequest();
+      xhr.open('POST','/update',true);
+      xhr.setRequestHeader('Authorization','Basic '+btoa('admin:admin'));
+      xhr.upload.onprogress=function(e){
+        if(e.lengthComputable){
+          bar.style.width=(55+Math.round(e.loaded/e.total*40))+'%';
+          msg.textContent='上传到设备 '+Math.round(e.loaded/e.total*100)+'% · 写入 flash 后自动重启';
+        }
+      };
+      xhr.onload=function(){
+        if(xhr.status===200||xhr.status===302){
+          bar.style.width='100%';
+          msg.textContent='上传完成，设备写入中并重启，等待设备上线…';
+          pollAfterUpgrade();
+        }else{
+          msg.textContent='上传失败：HTTP '+xhr.status;
+        }
+      };
+      xhr.onerror=function(){msg.textContent='上传失败：网络错误';};
+      xhr.send(fd);
+    })
+    .catch(function(e){
+      msg.textContent='升级失败：'+(e&&e.message?e.message:'未知错误')+'（可改用下方手动流程）';
+      bar.style.width='0%';
+    });
 }
 function renderUpdateState(d){
   var row=document.getElementById('updRow'),badge=document.getElementById('updBadge');
