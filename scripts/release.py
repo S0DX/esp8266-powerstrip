@@ -96,10 +96,12 @@ def main():
         sys.exit(1)
     bin_path.write_bytes(src_bin.read_bytes())
     sha = hashlib.sha256(bin_path.read_bytes()).hexdigest()
+    sha_path = dist / (bin_name + '.sha256')
+    sha_path.write_text(f'{sha}  {bin_name}\n', encoding='utf-8')
     print(f'dist/{bin_name}: {bin_path.stat().st_size} bytes | sha256: {sha}')
 
     # 3. git
-    for f in ['src/config.h', f'dist/{bin_name}']:
+    for f in ['src/config.h', f'dist/{bin_name}', f'dist/{bin_name}.sha256']:
         run(['git', 'add', str(root / f)])
     run(['git', 'commit', '-m', 'release: v' + ver])
     run(['git', 'tag', tag])
@@ -133,13 +135,14 @@ def main():
         rel_id = rel['id']
         print('Release 已存在（id', rel_id, '），直接补传附件')
     # 5. 上传 asset
-    up = urllib.request.Request(
-        f'https://uploads.github.com/repos/{REPO}/releases/{rel_id}/assets?name={bin_name}',
-        method='POST', data=bin_path.read_bytes())
-    up.add_header('Authorization', 'token ' + token)
-    up.add_header('Content-Type', 'application/octet-stream')
-    with urllib.request.urlopen(up, timeout=300) as resp:
-        print('asset:', json.loads(resp.read()).get('state'))
+    for name, fpath in [(bin_name, bin_path), (bin_name + '.sha256', sha_path)]:
+        up = urllib.request.Request(
+            f'https://uploads.github.com/repos/{REPO}/releases/{rel_id}/assets?name={name}',
+            method='POST', data=fpath.read_bytes())
+        up.add_header('Authorization', 'token ' + token)
+        up.add_header('Content-Type', 'application/octet-stream')
+        with urllib.request.urlopen(up, timeout=300) as resp:
+            print('asset:', name, '->', json.loads(resp.read()).get('state'))
     print()
     print(f'v{ver} 发布完成: https://github.com/{REPO}/releases/tag/{tag}')
     print('现在打开设备页面 -> 更多设置 -> 固件更新 -> 一键升级 即可无线更新。')
