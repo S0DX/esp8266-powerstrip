@@ -259,15 +259,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
       <div class='page' id='mp0'></div>
       <div class='page' id='mp1'></div>
       <div class='page' id='mp2'></div>
-      <div class='page' id='mp3'>
-        <div class='card' id='deviceInfoCard' style='text-align:center'>
-          <div class='card-title'>设备信息</div>
-          <div style='font-size:13px;font-weight:500;color:#2c2c2a'>Smart Power Strip v<span class='verTxt'>--</span></div>
-          <div style='font-size:11px;color:#8e8e93;margin-top:5px'>项目与固件：<a href='https://github.com/S0DX/esp8266-powerstrip' target='_blank' style='color:#007aff;text-decoration:none'>github.com/S0DX/esp8266-powerstrip</a></div>
-          <div style='font-size:11px;color:#8e8e93;margin-top:2px'>作者：S0DX</div>
-          <button class='btn' onclick='showMoreSettings()' style='margin-top:10px'>更多设置</button>
-        </div>
-      </div>
+      <div class='page' id='mp3'></div>
     </div>
   </div>
 </div>
@@ -1080,23 +1072,24 @@ function renderCards(order){
 var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
 var _mpg=1,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
 // 分屏编排：页0 数据 · 页1 控制 · 页2 定时 · 页3 人来上电+设备信息（默认页=页1）
-var _PAGE_CARDS=[['power','history'],['relay'],['quicktimer'],['wifidetect','wifi']];
+var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect']];
 function mobileArrange(){
   var mp=document.getElementById('mobilePages');
   if(!mp)return;
   document.getElementById('cardsContainer').style.display='none';
   mp.style.display='block';
-  // 24h 循环卡：从更多设置页搬移到屏 2（唯一不在克隆集里的卡，每次渲染都要找回）
-  var cycleCard=null,allCards=document.querySelectorAll('.card');
+  // 两张非克隆卡，每次渲染都要找回：
+  //   循环卡（含 #cycleTrack）→ 屏 2；设备信息/系统信息卡（含 #sysLogToggle）→ 屏 3
+  var cycleCard=null,sysinfoCard=null,allCards=document.querySelectorAll('.card');
   for(var i=0;i<allCards.length;i++){
-    if(allCards[i].querySelector('#cycleTrack')){cycleCard=allCards[i];break;}
+    if(!cycleCard&&allCards[i].querySelector('#cycleTrack'))cycleCard=allCards[i];
+    if(!sysinfoCard&&allCards[i].querySelector('#sysLogToggle'))sysinfoCard=allCards[i];
   }
   // 清空四屏（循环卡与设备信息卡除外——它们不在克隆集里，删了就找不回）
-  var infoCard=document.getElementById('deviceInfoCard');
   for(var p=0;p<4;p++){
     var pg=document.getElementById('mp'+p);
     var old=pg.querySelectorAll('.card');
-    for(var i=0;i<old.length;i++){if(old[i]!==cycleCard&&old[i]!==infoCard)old[i].remove();}
+    for(var i=0;i<old.length;i++){if(old[i]!==cycleCard&&old[i]!==sysinfoCard)old[i].remove();}
   }
   var cards=document.getElementById('cardsContainer').querySelectorAll('.card');
   for(var i=0;i<cards.length;i++){
@@ -1119,13 +1112,16 @@ function mobileArrange(){
     cycleCard.classList.add('no-swipe');
     document.getElementById('mp2').appendChild(cycleCard);
   }
+  // 设备信息/系统信息卡移入屏 3 最底部（首次搬移；后续渲染中保持）
+  if(sysinfoCard){
+    sysinfoCard.classList.add('no-swipe');
+    document.getElementById('mp3').appendChild(sysinfoCard);
+  }
   // 手机版固定编排，隐藏"主页卡片排序"卡（桌面版保留排序功能）
   var allMs=document.getElementById('moreSettingsM').querySelectorAll('.card');
   for(var i=0;i<allMs.length;i++){
     if(allMs[i].querySelector('#sortList')) allMs[i].style.display='none';
   }
-  // 设备信息卡保持在页 3 最底部（克隆卡 appendChild 会排到它前面）
-  if(infoCard)document.getElementById('mp3').appendChild(infoCard);
   if(!_mInited){_mInited=true;initSwipe();}
   applyPage();
 }
