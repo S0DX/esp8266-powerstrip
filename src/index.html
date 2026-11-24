@@ -103,7 +103,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .cycle-txt-btn{background:none;border:none;font-size:15px;font-family:inherit;cursor:pointer;padding:8px 2px;font-weight:400;-webkit-tap-highlight-color:transparent}
 .cycle-empty{font-size:13px;color:#c7c7cc;text-align:center;line-height:36px}
 /* ===== 手机版横滑分屏（v5.9） ===== */
-#mobilePages{display:none;height:calc(100vh - 46px);display:none;flex-direction:column}
+#mobilePages{display:none;height:calc(100vh - 58px);flex-direction:column}
 #mobilePages .dots{display:flex;justify-content:center;gap:8px;padding:9px 0;flex-shrink:0;background:#f5f5f7}
 #mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
 #mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
@@ -117,7 +117,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 #mobilePages .picker .col{scrollbar-width:none}
 pre::-webkit-scrollbar{width:0;height:0;display:none}
 pre{scrollbar-width:none}
-#mobilePages .dots.top{position:static}
+.m-dots{display:none;align-items:center;gap:7px}.m-dots .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}.m-dots .dot.on{background:#007aff;width:18px;border-radius:4px}
 #mobilePages .dot{width:7px;height:7px;border-radius:50%;background:#c7c7cc;transition:all .25s;cursor:pointer}
 #mobilePages .dot.on{background:#007aff;width:18px;border-radius:4px}
 .mode-banner{background:#faeeda;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -144,6 +144,12 @@ pre{scrollbar-width:none}
 </div>
 <div class="header">
   <h1>智能插排</h1>
+  <div class="m-dots" id="mDots" style="display:none">
+    <span class="dot on" onclick="goPage(0)"></span>
+    <span class="dot" onclick="goPage(1)"></span>
+    <span class="dot" onclick="goPage(2)"></span>
+    <span class="dot" onclick="goPage(3)"></span>
+  </div>
   <span id="chipTime" style="font-size:13px;color:#8e8e93">--:--</span>
 </div>
 
@@ -253,12 +259,6 @@ pre{scrollbar-width:none}
 
 <!-- ======== 手机版横滑分屏（v5.9）：桌面版隐藏，卡片由 renderCards 分配 ======== -->
 <div id='mobilePages'>
-  <div class='dots top'>
-    <span class='dot on' onclick='goPage(0)'></span>
-    <span class='dot' onclick='goPage(1)'></span>
-    <span class='dot' onclick='goPage(2)'></span>
-    <span class='dot' onclick='goPage(3)'></span>
-  </div>
   <div class='pages-viewport'>
     <div class='pages-track' id='mTrack'>
       <div class='page' id='mp0'></div>
@@ -569,7 +569,6 @@ pre{scrollbar-width:none}
   </div>
   <p id="hostnameHint" style="font-size:11px;color:#8e8e93;margin:4px 0 0">访问地址为 <span id="hostnamePreview">power.local</span>，1-10 位小写字母/数字/连字符</p>
   <div style="display:flex;gap:8px;margin-top:12px">
-    <button class="btn" id="otaBtn">固件升级</button>
     <button class="btn btn-ghost" id="restartBtn" onclick="confirmRestart()">重启设备</button>
   </div>
   <button class="timer-btn" style="width:100%;background:#ff3b30;color:#fff;margin-top:10px" onclick="resetEnergyHistory()">清零历史电量和电费记录</button>
@@ -581,11 +580,11 @@ pre{scrollbar-width:none}
 <div class="card-title">固件更新</div>
 <div id="updRow" style="font-size:12px;color:#8e8e93">当前版本 <span id="updCur">--</span> · 未检查</div>
 <div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
-<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">一键升级：浏览器自动下载固件（jsDelivr CDN）→ SHA-256 校验 → 局域网上传到设备 → 等待重启，全程无需手动操作。</p>
 <div style="display:flex;gap:8px;margin-top:10px">
   <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
   <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="autoUpgradeFull()">一键升级</button>
 </div>
+<button class="btn btn-ghost" id="otaBtn" style="width:100%;margin-top:8px">手动固件更新</button>
 <div style="font-size:11px;color:#8e8e93;margin-top:10px">手动刷入 .bin 文件请使用「系统设置 → 固件升级」入口。</div>
 <div id="upgProg" style="display:none;margin-top:10px">
   <div style="background:#f2f2f7;border-radius:6px;height:12px;overflow:hidden"><div id="upgBar" style="height:100%;width:0%;background:#007aff;transition:width .3s"></div></div>
@@ -1068,7 +1067,11 @@ function renderCards(order){
   var mt=document.getElementById('mt');if(mt)mt.addEventListener('click',toggleMeter);
   var wb=document.getElementById('wifiBtn');if(wb)wb.addEventListener('click',showWifi);
   setTimeout(function(){loadHistory();},100);
-  if(IS_MOBILE)mobileArrange();
+  if(IS_MOBILE){
+    var md=document.getElementById('mDots');
+    if(md)md.style.display='flex';
+    mobileArrange();
+  }
 }
 
 // ===== 手机版横滑分屏（v5.9）：桌面版保持纵向卡片流 =====
@@ -1304,16 +1307,6 @@ function browserAutoCheck(){
   checkUpdateNow();
 }
 var _latestAssetUrl='';
-function downloadLatest(){
-  if(_latestAssetUrl){window.open(_latestAssetUrl,'_blank');return;}
-  fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',{cache:'no-store'})
-    .then(function(r){return r.json()})
-    .then(function(d){
-      if(d&&d.assets){for(var i=0;i<d.assets.length;i++){if(/\.bin$/.test(d.assets[i].name)){window.open(d.assets[i].browser_download_url,'_blank');return;}}}
-      window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');
-    })
-    .catch(function(){window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');});
-}
 // 手机/电脑端上传升级：浏览器下载 bin → 本页局域网直传设备 /update（避开设备端 TLS 内存）
 function pollAfterUpgrade(){
   var msg=document.getElementById('upgMsg');

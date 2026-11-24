@@ -1,6 +1,6 @@
 {
-  "v": "5.9.3",
-  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.3/dist/firmware-v5.9.3.bin",
-  "notes": "pure-JS SHA-256 verification (http page lacks Web Crypto), poll backoff, touch-action fix",
-  "sha256": "8a400a2c5548d06636b6d06ae5490f8a2fcf9aa387438c8c558a540d40e2f275"
+  "v": "5.9.4",
+  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.4/dist/firmware-v5.9.4.bin",
+  "notes": "page dots moved into header bar, firmware card cleanup, manual OTA button relocated",
+  "sha256": "58056390c981619e06b60ce014f4f72774ee27b511a30852cc4ad89954b32aa1"
 }
