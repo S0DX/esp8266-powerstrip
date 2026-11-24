@@ -131,6 +131,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 </div>
 </div>
 <div class="switch-row" style="border-top:1px solid #e5e5ea;margin-top:12px;padding-top:12px">
+<span style="font-size:15px">长通模式<span style="font-size:11px;color:#8e8e93;display:block;margin-top:2px">主继电器保持常开不受控制 · 人来上电/计费不可用</span></span>
+<div class="toggle" id="lt" onclick="toggleLatch()"></div>
+</div>
+<div class="switch-row" style="padding-top:12px">
 <span style="font-size:15px">锁定模式<span style="font-size:11px;color:#8e8e93;display:block;margin-top:2px">禁用物理按键，仅 Web 端控制</span></span>
 <div class="toggle" id="lk"></div>
 </div>
@@ -523,6 +527,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 
 <script>
 var selSSID='';
+var _latch=false;
 
 function init(){
   try{
@@ -640,8 +645,16 @@ function update(){
     var rst=document.getElementById('rst'); if(rst) rst.textContent=d.rst||'--';
     updateChipFromStatus(d);
     var ver=document.getElementById('ver'); if(ver) ver.textContent='V'+d.ver;
-    var rm=document.getElementById('rm'); if(rm){if(d.m)rm.classList.add('on');else rm.classList.remove('on');}
-    var rs=document.getElementById('rs'); if(rs){if(d.s)rs.classList.add('on');else rs.classList.remove('on');}
+    _latch=!!d.lt;
+    var lt=document.getElementById('lt'); if(lt){if(_latch)lt.classList.add('on');else lt.classList.remove('on');}
+    var rm=document.getElementById('rm');
+    if(rm){
+      // 长通模式：主继电器强制显示为开且不可操作
+      if(_latch||d.m)rm.classList.add('on');else rm.classList.remove('on');
+      rm.style.opacity=_latch?'.45':'';
+      rm.title=_latch?'长通模式开启中，主继电器保持常开':'';
+    }
+    var rs=document.getElementById('rs'); if(rs){if(d.s)rs.classList.add('on');else rs.classList.remove('on');rs.style.opacity='';}
     var lk=document.getElementById('lk'); if(lk){if(d.lk)lk.classList.add('on');else lk.classList.remove('on');}
     var mV=document.getElementById('mV'); if(mV) mV.textContent=d.me?(d.v!==undefined?d.v:'--'):'--';
     var mI=document.getElementById('mI'); if(mI) mI.textContent=d.me?(d.i!==undefined?d.i:'--'):'--';
@@ -705,13 +718,18 @@ function update(){
 
     var pt=document.getElementById('pwrOffToggle');
     if(pt){if(d.pe)pt.classList.add('on');else pt.classList.remove('on');}
-    syncPowerOffHome(d.pe);
+    syncPowerOffHome(d.pe && !_latch);
+    var ph=document.getElementById('pwrOffHome');
+    if(ph) ph.style.opacity=_latch?'.45':'';
     var pth=document.getElementById('pwrThresh');
     if(pth && d.pt !== undefined && document.activeElement !== pth) pth.value=d.pt;
 
-    // 更新计费供电状态
+    // 更新计费供电状态（长通模式下不可用：显示关闭并禁用）
     var bt=document.getElementById('billingToggle');
-    if(bt){if(d.be)bt.classList.add('on');else bt.classList.remove('on');}
+    if(bt){
+      if(d.be && !_latch)bt.classList.add('on');else bt.classList.remove('on');
+      bt.style.opacity=_latch?'.45':'';
+    }
     var bmo=document.getElementById('billingMode');
     if(bmo && d.bmo !== undefined && document.activeElement !== bmo){
       bmo.value=d.bmo;
@@ -738,9 +756,12 @@ function update(){
     var hlm=document.getElementById('histLastMonth');
     if(hlm) hlm.textContent=d.lm!==undefined?d.lm.toFixed(2)+'度':'--';
 
-    // WiFi 检测状态
+    // WiFi 检测状态（长通模式下不可用：显示关闭并禁用）
     var wdt=document.getElementById('wifiDetectToggle');
-    if(wdt){if(d.de)wdt.classList.add('on');else wdt.classList.remove('on');}
+    if(wdt){
+      if(d.de && !_latch)wdt.classList.add('on');else wdt.classList.remove('on');
+      wdt.style.opacity=_latch?'.45':'';
+    }
     var wdl=document.getElementById('wifiDetectLinkToggle');
     if(wdl){if(d.dl)wdl.classList.add('on');else wdl.classList.remove('on');}
     var wdom=document.getElementById('wdOnlyMaster');
@@ -1071,8 +1092,26 @@ function toggleCardVis(idx,ev){
 }
 
 var _relayBusy=false;
+function latchBlocked(){
+  if(_latch){alert('长通模式开启中，该功能不可用');return true;}
+  return false;
+}
+
+function toggleLatch(){
+  var target=!_latch;
+  var msg=target
+    ? '开启长通模式？\n· 主继电器立即打开并保持常开，不受任何控制\n· 倒计时/24小时循环/MQTT/按键将只控制副继电器\n· 人来上电暂停（配置保留，关闭长通后恢复），计费供电结束\n· 拔除检测：总功率低于阈值 5 秒 → 只关副继电器'
+    : '关闭长通模式？\n主继电器保持当前开启状态，之后可再手动关闭。';
+  if(!confirm(msg))return;
+  fetch('/api/latch?enabled='+(target?'true':'false')).then(function(r){return r.json()}).then(function(){
+    update();
+  }).catch(function(){alert('操作失败：设备无响应');});
+}
+
 function tr(w){
   if(_relayBusy) return;
+  // 长通模式：主继电器保持常开，不接受关闭操作
+  if(w=='m' && _latch){alert('长通模式开启中，主继电器保持常开');return;}
   _relayBusy=true;
   var t=document.getElementById(w=='m'?'rm':'rs');
   var other=document.getElementById(w=='m'?'rs':'rm');
@@ -1282,6 +1321,8 @@ function updateQuickTimerBtn(){
   }else{
     qtm.classList.remove('active');
     qtm.textContent='启动倒计时';
+    qtm.style.opacity='';
+    qtm.title='';
   }
 }
 
@@ -1697,6 +1738,7 @@ function updateCycleStatus(d){
 
 var _wifiDetectBusy=false;
 function toggleWifiDetect(){
+  if(latchBlocked())return;
   if(_wifiDetectBusy)return;_wifiDetectBusy=true;
   var wt=document.getElementById('wifiDetectToggle');
   if(!wt){_wifiDetectBusy=false;return;}
@@ -1853,6 +1895,7 @@ function togglePowerOff(){
 }
 
 function togglePowerOffHome(){
+  if(latchBlocked())return;
   var pt=document.getElementById('pwrOffHome');
   if(!pt)return;
   var en=!pt.classList.contains('on');
@@ -1879,6 +1922,7 @@ function onBillingModeChange(){
 }
 
 function toggleBilling(){
+  if(latchBlocked())return;
   var bt=document.getElementById('billingToggle');
   if(!bt)return;
   var en=!bt.classList.contains('on');

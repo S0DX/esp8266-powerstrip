@@ -2,13 +2,13 @@
 
 # 🔌 智能插排固件
 
-### ESP8266 Smart Power Strip Firmware · v5.6
+### ESP8266 Smart Power Strip Firmware · v5.8.1
 
 <img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
-[![Version](https://img.shields.io/badge/version-5.6-007aff?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-5.8.1-007aff?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-ESP8266-34c759?style=flat-square)](#)
 [![Language](https://img.shields.io/badge/language-C%2B%2B-orange?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](#)
@@ -56,6 +56,7 @@
 - **从继电器（分控）**：独立控制的输出端
 - **批量控制**：支持同时开关双继电器
 - **锁定模式**：禁用物理按键，仅 Web 端可控
+- **长通模式**（v5.7/v5.8）：主继电器强制常开，不受任何控制——Web、按键、倒计时、24h 循环、人来上电、计费、MQTT 的关闭请求在继电器原语层统一拦截；该状态下从继电器仍受控：倒计时与 24h 循环自动降级为独立控制从继电器，物理按键单按切换从继电器，MQTT 只能控制从继电器，拔除检测改用功率差值判断从继电器上的设备拔除（仅关从）；人来上电与计费供电不可用；状态持久化，断电重启后仍保持常开
 
 ### 电能监测 (SY7T609)
 - 实时电压、电流、功率、功率因数显示
@@ -77,8 +78,13 @@
 - **MQTT 集成**：支持接入 Home Assistant 等智能家居平台
 
 ### 网络功能
-- **mDNS 域名**：默认 `power.local`，支持自定义
-  - v5.0 可靠性提升：`MDNS.begin()` 失败重试 3 次，`MDNS.update()` 独立于 STA 状态调用，Web 请求间隙兜底响应
+- **名字解析（v5.8.1 重写）**：自研轻量 responder 替换 core MDNS，同时支持 AP 模式与局域网访问
+  - **mDNS**（`http://power.local/`）：STA 与 AP 双接口各自监听 5353 组播，按查询来源接口回对应 A 记录；标准查询组播+单播双发应答
+  - **LLMNR**（`http://power/`，Windows 原生）：224.0.0.252:5355 应答单标签名——Windows 无 Bonjour 时对 `.local` 多标签解析不可靠，用这个最稳
+  - AP_STA 双模下按查询来源网段过滤，避免两个接口的响应竞速导致解析到不可路由的 AP IP
+  - responder 运行期间 WiFi 强制 NONE_SLEEP（modem sleep 会丢 5353/5355 组播查询包）
+  - AP 直连模式下 `power.local` / `power` 同样可用（此前 core MDNS 在 AP 模式完全不可用）
+- **mDNS 域名**：默认 `power`（即 `power.local`），支持自定义（设置中修改后自动重启 responder）
 - **Captive Portal**：跨平台门户弹出（v5.0 新增 Android `/generate_204`、Windows `/connecttest.txt` 探测端点）
 - **页面 gzip 交付**（v5.2）：Web 页面预压缩为 gzip，Flash 占用降低约 8%，AP 直连首屏加载提速 3-4 倍
 - **AP + STA 双模式**：配置时不断开连接
@@ -310,6 +316,13 @@ v5.1 起按"功能性在前、维护性靠后"排序：
 | 快速双按 | 第一次按下后的 200ms 内再按一次，同时开启从继电器 |
 | 长按 20秒 | 恢复出厂设置 |
 
+**长通模式下**（v5.8）：
+
+| 操作 | 功能 |
+|------|------|
+| 单按 | 切换从继电器（开→关 / 关→开），主继电器保持常开不受控 |
+| 长按 20秒 | 恢复出厂设置（长通一并清除） |
+
 **锁定模式下**：
 - 单击：触发按键检测（如果开启）
 - 长按：关闭所有继电器
@@ -367,6 +380,7 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/api/lock` | GET/POST | 锁定模式 |
+| `/api/latch` | GET | 长通模式：`?enabled=true/false` 开关；开启后主继电器常开，`/api/relay`、`/api/timer`、`/api/billing`、`/api/poweroff`、`/api/wifidetect`、`/api/cycle` 的启用/关闭请求返回 `{"ok":false,"reason":"latch"}` |
 | `/api/cycle` | GET/POST | 24小时循环 |
 | `/api/meter` | GET/POST | 电能监测开关 |
 | `/api/mqtt` | GET/POST | MQTT 配置 |
@@ -449,6 +463,7 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 | 648-724 | 77 | MQTT 配置 |
 | 725 | 1 | 计费历史计数 |
 | 726-749 | 24 | 循环时段 V3（6 时段 × 4 字节，v5.1；旧地址 492-503 开机自动迁移）|
+| 750 | 1 | 长通模式（0x4C='L' 表示开启，v5.7；主继电器强制常开）|
 
 ### 控制逻辑优先级
 
@@ -557,6 +572,9 @@ MIT License
 
 ## 版本历史
 
+- **v5.8.1** - 名字解析修正：mDNS 标准查询（源端口 5353、ID=0）按 RFC 6762 应组播应答，此前只发单播会被 Windows/iOS 解析器忽略——改为组播+单播双发；新增 **LLMNR responder**（224.0.0.252:5355，应答单标签名 `power`）——Windows 无 Bonjour 时用 `http://power/` 访问（.local 的多标签解析 Windows 原生支持有限）；长通拔除检测废弃 EMA 均值差值方案（SY7T609 测总进线功率，主负载波动会污染均值导致漏报/误动作），改为复用拔除阈值配置：总功率低于阈值持续 5 秒 → 仅关从继电器，宁漏不误
+- **v5.8** - 长通模式完善：从继电器成为受控对象——倒计时与 24h 循环在长通下自动降级为 slave-only（到期/时段结束只关从），物理按键单按切换从继电器，MQTT 下发只能控制从继电器，拔除检测改用功率差值判断；`/api/timer`、`/api/cycle` 在长通下恢复可用；新增自研轻量 mDNS responder（双接口监听 5353 组播，按来源接口回 A 记录，替换 core MDNS）——修复 AP 模式下 `power.local` 无法解析与局域网 mDNS 不生效（modem sleep 丢组播包，responder 运行期间强制 NONE_SLEEP）；修复继电器卡片长通行与锁定行之间的双分隔线
+- **v5.7** - 新增**长通模式**：主继电器强制常开，Web/按键/倒计时/24h 循环/人来上电/计费的关闭请求全部在 `setRelayMaster`/`setRelays`/`stopTimer` 入口拦截；开启时自动停止倒计时与 24h 循环、结束计费会话，人来上电暂停但配置保留（关闭长通后恢复）；状态存 EEPROM（地址 750），断电重启后自动恢复常开；`/api/latch` 开关，`/api/status` 新增 `lt` 字段；首页继电器卡片新增长通开关，受影响功能置灰禁用
 - **v5.6** - 时间同步重构：统一 `TimeManager` 时间出口，NTP 联网校时优先、浏览器手动校正回退（NTP 可用时拒绝浏览器覆盖）；新增首页右上角设备时钟（本地每秒推进，按时间源区分颜色）；离线时系统 RTC 持续计时不影响定时/24h 循环；断电不持久化时间，重启必须重新校时；24h 循环增加时间有效性门控，未校时时不动作
 - **v5.5** - 功率计算重构：始终采用芯片有功功率（含功率因数语义），新增**空载自动零点校正**自动消除空载/采样零漂导致的负功率与虚高；不再退回 V×I 视在功率。默认自动、免手动校准，空载约 4 秒后完成，UI 显示"自动校准完成"绿色状态；隐藏全局滚动条
 - **v5.4** - 修复手机端按钮"卡死无响应"：iOS 挂起页面时在途 fetch 可能永不回调，`_relayBusy` 防抖锁无超时兜底导致永久假死；加 5 秒强制解锁。新增请求级诊断日志（`/api/reqlog`），详见「踩坑实录二」

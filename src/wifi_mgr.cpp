@@ -2,6 +2,7 @@
 #include "config.h"
 #include "gpio_mgr.h"
 #include "time_mgr.h"
+#include "mdns_responder.h"
 #include <EEPROM.h>
 
 WiFiManager::WiFiState WiFiManager::state_ = WiFiManager::STATE_IDLE;
@@ -82,6 +83,10 @@ void WiFiManager::init() {
         ap_ssid_.c_str(),
         apPass.length() >= 8 ? " (password protected)" : " (open)");
 
+    // mDNS responder 立即启动：AP-only 配网场景下 power.local 也能解析；
+    // STA 连接成功后的 rebind 由 handle() 的周期重绑逻辑自动完成
+    startMDNS();
+
     // 仅标记待连接，实际连接在 handle() 中进行，避免阻塞 AP 响应
     if (loadConfig()) {
         Serial.printf("[WiFi] Loaded config for SSID: %s\n", saved_ssid_);
@@ -148,9 +153,7 @@ void WiFiManager::handle() {
     updateSleepMode();
 
     // mDNS 查询响应需及时处理，独立于 STA 状态调用（Web 请求间隙也由外部 updateMDNS 兜底）
-    if (mdns_started_) {
-        MDNS.update();
-    }
+    MDNSResponder::handle();
 
     if (state_ == STATE_CONNECTED) {
         int rssi = WiFi.RSSI();
@@ -213,7 +216,7 @@ void WiFiManager::handle() {
                 GPIOManager::setRedMode(GPIOManager::LED_BLINK);
                 TimeManager::onNetworkDown();  // 离线：本地时钟继续走，允许浏览器校时
                 if (mdns_started_) {
-                    MDNS.close();
+                    MDNSResponder::stop();
                     mdns_started_ = false;
                 }
             }
@@ -237,7 +240,7 @@ void WiFiManager::handle() {
                     connection_start_time_ = millis();
                     is_connecting_ = true;
                     if (mdns_started_) {
-                        MDNS.close();
+                        MDNSResponder::stop();
                         mdns_started_ = false;
                     }
                     WiFi.begin(saved_ssid_, saved_password_);  // 使用保存的配置
@@ -486,69 +489,19 @@ void WiFiManager::resetHostname() {
 }
 
 void WiFiManager::startMDNS() {
-    if (mdns_started_) {
-        MDNS.close();
-        mdns_started_ = false;
-    }
-
-    String hostname = getMDNSHostname();
-
-    // ESP8266mDNS 在 AP_STA 双模下可能绑定到 AP 接口导致 .local 无法解析。
-    // 临时切到 STA-only 启动 mDNS，确保它绑定到正确的 STA IP，然后再恢复 AP_STA。
-    bool had_ap = (WiFi.getMode() & WIFI_AP) != 0;
-    if (had_ap) {
-        WiFi.mode(WIFI_STA);
-        delay(50);
-        ESP.wdtFeed();
-        yield();
-    }
-
-    // MDNS.begin() 在 WiFi 刚连接时可能因网络栈未就绪而失败，重试 3 次
-    bool ok = false;
-    for (int i = 0; i < 3 && !ok; i++) {
-        ok = MDNS.begin(hostname.c_str());
-        if (!ok) {
-            Serial.printf("[mDNS] begin attempt %d failed, retrying...\n", i + 1);
-            delay(200);
-            ESP.wdtFeed();
-            yield();
-        }
-    }
-    ESP.wdtFeed();
-    yield();
-
-    if (had_ap) {
-        WiFi.mode(WIFI_AP_STA);
-        delay(50);
-        ESP.wdtFeed();
-        yield();
-        String apPass = getAPPassword();
-        if (apPass.length() >= 8) {
-            WiFi.softAP(ap_ssid_.c_str(), apPass.c_str());
-        } else {
-            WiFi.softAP(ap_ssid_.c_str(), "");
-        }
-        yield();
-    }
-
-    if (ok) {
-        mdns_started_ = true;
-        MDNS.addService("http", "tcp", WEB_SERVER_PORT);
-        Serial.printf("[mDNS] Started: %s.local -> %s\n", hostname.c_str(), WiFi.localIP().toString().c_str());
-    } else {
-        mdns_started_ = false;
-        Serial.println("[mDNS] Failed to start");
-    }
+    // 自研轻量 responder：双接口（STA+AP）监听 5353 组播，按来源接口回 A 记录。
+    // 替换 core MDNS——它在 AP_STA 双模下绑定接口不可靠，纯 AP 模式下完全不可用。
+    MDNSResponder::start();
+    mdns_started_ = MDNSResponder::running();
 }
 
 void WiFiManager::updateMDNS() {
-    if (mdns_started_) {
-        MDNS.update();
-    }
+    MDNSResponder::handle();
 }
 
 // 根据 AP 客户端连接状态和 STA 状态动态切换 WiFi sleep 模式：
 // - 有 AP 客户端连接或 STA 未连接时保持 NONE_SLEEP，保证响应速度
+// - mDNS responder 运行期间强制 NONE_SLEEP（modem sleep 会丢 5353 组播查询包）
 // - STA 已连接且无 AP 客户端时启用 MODEM_SLEEP，降低功耗和发热
 void WiFiManager::updateSleepMode() {
     if (millis() - last_sleep_update_ < 1000) {
@@ -560,6 +513,10 @@ void WiFiManager::updateSleepMode() {
     if (state_ != STATE_CONNECTED) {
         target = WIFI_NONE_SLEEP;
     } else if (WiFi.softAPgetStationNum() > 0) {
+        target = WIFI_NONE_SLEEP;
+    }
+    // mDNS responder 监听 5353 组播，modem sleep 会丢查询包，运行期间强制常醒
+    if (MDNSResponder::running()) {
         target = WIFI_NONE_SLEEP;
     }
 

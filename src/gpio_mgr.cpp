@@ -11,6 +11,7 @@
 bool GPIOManager::relay_master_state_ = false;
 bool GPIOManager::relay_slave_state_ = false;
 bool GPIOManager::locked_ = false;
+bool GPIOManager::latch_enabled_ = false;
 GPIOManager::LEDMode GPIOManager::red_mode_ = LED_OFF;
 unsigned long GPIOManager::blink_timer_ = 0;
 bool GPIOManager::blink_state_ = false;
@@ -410,6 +411,16 @@ void GPIOManager::init() {
         billing_enabled_ ? "yes" : "no", (int)billing_mode_,
         billing_threshold_, billing_threshold_money_cents_, billing_threshold_time_minutes_,
         energy_price_);
+
+    // 长通模式恢复：锁存继电器断电保持原物理状态，这里同步软件状态并补
+    // 一次使能脉冲，确保主继电器确定处于闭合。恢复优先于一切自动控制。
+    latch_enabled_ = (EEPROM.read(EEPROM_LATCH_ADDR) == EEPROM_LATCH_MAGIC);
+    if (latch_enabled_) {
+        relay_master_state_ = true;
+        digitalWrite(RELAY_MASTER_PIN, LOW);
+        triggerRelayEnable();
+        DBG_PRINTF("[GPIO] Latch mode restored: master relay forced ON\n");
+    }
 }
 
 void GPIOManager::initRelayPins() {
@@ -443,6 +454,11 @@ void GPIOManager::initButtonPin() {
 }
 
 void GPIOManager::setRelayMaster(bool on) {
+    // 长通模式：主继电器保持常开，忽略一切关闭请求
+    if (latch_enabled_ && !on) {
+        DBG_PRINTF("[GPIO] Latch mode: master relay OFF request ignored\n");
+        return;
+    }
     // 状态未变化时跳过所有操作，避免无预期的继电器使能脉冲声，也不终止倒计时
     if (on == relay_master_state_) {
         return;
@@ -505,6 +521,11 @@ void GPIOManager::setRelaySlaveDuringTimer() {
 }
 
 void GPIOManager::setRelays(bool master, bool slave) {
+    // 长通模式：主继电器强制保持常开，从继电器部分仍按请求生效
+    if (latch_enabled_ && !master) {
+        DBG_PRINTF("[GPIO] Latch mode: master relay kept ON in setRelays\n");
+        master = true;
+    }
     // 状态未变化时跳过所有操作，避免无预期的继电器使能脉冲声，也不终止倒计时
     if (relay_master_state_ == master && relay_slave_state_ == slave) {
         return;
@@ -534,6 +555,43 @@ void GPIOManager::setLocked(bool locked) {
 
 bool GPIOManager::isLocked() {
     return locked_;
+}
+
+void GPIOManager::setLatched(bool on) {
+    if (on == latch_enabled_) {
+        return;
+    }
+    latch_enabled_ = on;
+    EEPROM.write(EEPROM_LATCH_ADDR, on ? EEPROM_LATCH_MAGIC : 0);
+    requestEEPROMCommit();
+
+    if (on) {
+        // 停倒计时（latch 已置位，stopTimer 只关从继电器）
+        if (timer_running_) {
+            stopTimer();
+        }
+        // 24h 循环保留启用：长通下它降级为独立控制从继电器（见 handleTimer）
+        // 结束进行中的计费会话（写入账单历史，enabled 落盘为关）
+        if (billing_enabled_) {
+            stopBilling(BILLING_STOP_MANUAL);
+        }
+        // 人来上电：配置保留在 EEPROM，仅暂停检测；关闭长通后自动恢复
+        wifi_was_present_ = false;
+
+        // 强制开主继电器（直接置位，不走 setRelayMaster 以免被自身拦截逻辑绕路）
+        relay_master_state_ = true;
+        digitalWrite(RELAY_MASTER_PIN, LOW);
+        triggerRelayEnable();
+        setLEDWhite(relay_slave_state_);
+        DBG_PRINTF("[GPIO] Latch mode ON: master relay forced, timer/cycle/billing stopped\n");
+    } else {
+        DBG_PRINTF("[GPIO] Latch mode OFF: master relay stays ON until manually controlled\n");
+    }
+    MQTTManager::requestPublish();
+}
+
+bool GPIOManager::isLatched() {
+    return latch_enabled_;
 }
 
 void GPIOManager::triggerRelayEnable() {
@@ -678,6 +736,15 @@ void GPIOManager::startTimer(uint8_t target) {
     timer_target_ = target;
     timer_running_ = true;
     timer_start_time_ = millis();
+    // 长通模式：倒计时降级为 slave-only（target=2），只控制从继电器，到期关从
+    if (latch_enabled_) {
+        timer_target_ = 2;
+        relay_slave_state_ = true;
+        digitalWrite(RELAY_SLAVE_PIN, LOW);
+        triggerRelayEnable();
+        DBG_PRINTF("[GPIO] Timer started: %dmin (latch slave-only)\n", timer_duration_);
+        return;
+    }
     relay_master_state_ = true;
     digitalWrite(RELAY_MASTER_PIN, LOW);
     if (target == 1) {
@@ -707,6 +774,17 @@ void GPIOManager::stopTimer() {
     timer_start_time_ = 0;
     timer_source_ = 0;     // P0-A: 重置 source，避免 WiFi 检测扫描被永久抑制
     timer_target_ = 0;     // 重置 target
+    // 长通模式：倒计时只控制从继电器——停止/到期时关闭从继电器，主保持常开
+    if (latch_enabled_) {
+        if (relay_slave_state_) {
+            relay_slave_state_ = false;
+            digitalWrite(RELAY_SLAVE_PIN, HIGH);
+            triggerRelayEnable();
+            setLEDWhite(false);
+        }
+        DBG_PRINTF("[GPIO] Timer stopped in latch mode: slave OFF, master kept ON\n");
+        return;
+    }
     relay_master_state_ = false;
     relay_slave_state_ = false;
     digitalWrite(RELAY_MASTER_PIN, HIGH);
@@ -772,11 +850,21 @@ void GPIOManager::handleTimer() {
             if (should_be_on && !cycle_is_active_) {
                 cycle_is_active_ = true;
                 DBG_PRINTF("[GPIO] Cycle ON timeframe reached\n");
-                setRelays(true, !wifi_detect_only_master_);
+                // 长通模式：循环独立控制从继电器（开侧 setRelays 被拦截后本就等效）
+                if (latch_enabled_) {
+                    setRelaySlave(true);
+                } else {
+                    setRelays(true, !wifi_detect_only_master_);
+                }
             } else if (!should_be_on && cycle_is_active_) {
                 cycle_is_active_ = false;
                 DBG_PRINTF("[GPIO] Cycle OFF timeframe reached\n");
-                setRelayMaster(false);
+                // 长通模式：OFF 时段只关从继电器，主保持常开
+                if (latch_enabled_) {
+                    setRelaySlave(false);
+                } else {
+                    setRelayMaster(false);
+                }
             }
         }
     }

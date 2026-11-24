@@ -1,6 +1,7 @@
 #include "sy7t609.h"
 #include "sy7t609_def.h"
 #include "config.h"
+#include "gpio_mgr.h"
 #include <Arduino.h>
 #include <ESP.h>
 
@@ -96,7 +97,9 @@ bool SY7T609::checkGPIO0ForFlashMode() {
     bool isLow = (digitalRead(RELAY_MASTER_PIN) == LOW);
 
     pinMode(RELAY_MASTER_PIN, OUTPUT);
-    digitalWrite(RELAY_MASTER_PIN, HIGH);
+    // GPIO0 与主继电器复用：flash 检测结束后按软件状态恢复电平。
+    // 长通模式下主继电器必须保持闭合，不能盲目拉高。
+    digitalWrite(RELAY_MASTER_PIN, GPIOManager::getRelayMaster() ? LOW : HIGH);
 
     gpio0_checked_ = true;
 

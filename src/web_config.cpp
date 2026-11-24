@@ -224,7 +224,7 @@ void WebConfigServer::init() {
         snprintf(status_buf, sizeof(status_buf),
             "{\"conn\":%s,\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
             "\"ver\":\"%s\",\"up\":%lu,\"m\":%s,\"s\":%s,"
-            "\"lk\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
+            "\"lk\":%s,\"lt\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
             "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"cal\":%s,\"rl\":%s,"
             "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,"
             "\"tstr\":\"%s\",\"tsrc\":%d,\"tage\":%lu,"
@@ -242,6 +242,7 @@ void WebConfigServer::init() {
             GPIOManager::getRelayMaster() ? "true" : "false",
             GPIOManager::getRelaySlave() ? "true" : "false",
             GPIOManager::isLocked() ? "true" : "false",
+            GPIOManager::isLatched() ? "true" : "false",
             GPIOManager::isTimerEnabled() ? "true" : "false",
             GPIOManager::isTimerRunning() ? "true" : "false",
             GPIOManager::getTimerDuration(),
@@ -353,6 +354,15 @@ void WebConfigServer::init() {
         String w = server_->arg("w");
         if (w == "m") {
             bool newState = !GPIOManager::getRelayMaster();
+            // 长通模式：主继电器保持常开，拒绝关闭请求（含连带关从的动作）
+            if (!newState && GPIOManager::isLatched()) {
+                String response = "{\"m\":true,\"s\":" +
+                                  String(GPIOManager::getRelaySlave() ? "true" : "false") +
+                                  ",\"latch\":true}";
+                server_->send(200, "application/json", response);
+                log_req("rl-out");
+                return;
+            }
             GPIOManager::setRelayMaster(newState);
             // 关闭主继电器时，同时关闭从继电器
             if (!newState) {
@@ -375,6 +385,7 @@ void WebConfigServer::init() {
     server_->on("/api/cycle", HTTP_GET, []() {
         if (server_->hasArg("enabled")) {
             bool on = (server_->arg("enabled") == "true");
+            // 长通模式下循环降级为独立控制从继电器（见 handleTimer），仍可启用
             GPIOManager::setCycleEnabled(on);
             server_->send(200, "application/json", "{\"enabled\":" + String(on ? "true" : "false") + "}");
             return;
@@ -446,7 +457,19 @@ void WebConfigServer::init() {
         server_->send(200, "application/json", response);
     });
 
-    // 定时器 API
+    // 长通模式 API：开启后主继电器强制常开，任何关闭请求（Web/按键/定时/循环/
+    // 人来上电/计费）都被忽略；人来上电、计费供电、倒计时、24h 循环不可用。
+    // 状态持久化在 EEPROM，断电重启后保持长通。
+    server_->on("/api/latch", HTTP_GET, []() {
+        if (server_->hasArg("enabled")) {
+            GPIOManager::setLatched(server_->arg("enabled") == "true");
+        }
+        String response = "{\"lt\":" + String(GPIOManager::isLatched() ? "true" : "false") +
+                          ",\"m\":" + String(GPIOManager::getRelayMaster() ? "true" : "false") + "}";
+        server_->send(200, "application/json", response);
+    });
+
+    // 定时器 API（长通模式下自动降级为 slave-only：只控制从继电器，见 startTimer/stopTimer）
     server_->on("/api/timer", HTTP_GET, []() {
         String enabled = server_->arg("enabled");
         String duration = server_->arg("duration");
@@ -876,6 +899,7 @@ void WebConfigServer::init() {
     server_->on("/api/poweroff", HTTP_GET, []() {
         if (server_->hasArg("enabled")) {
             bool en = (server_->arg("enabled") == "true");
+            // 长通模式下拔除检测仍可用：判定为拔除时只关从继电器（主保持常开）
             GPIOManager::setPowerOffEnabled(en);
         }
         if (server_->hasArg("threshold")) {
@@ -892,6 +916,11 @@ void WebConfigServer::init() {
     server_->on("/api/billing", HTTP_GET, []() {
         if (server_->hasArg("enabled")) {
             bool en = (server_->arg("enabled") == "true");
+            // 长通模式下计费供电不可用
+            if (en && GPIOManager::isLatched()) {
+                server_->send(200, "application/json", "{\"ok\":false,\"reason\":\"latch\"}");
+                return;
+            }
             GPIOManager::setBillingEnabled(en);
         }
         if (server_->hasArg("threshold")) {
@@ -1023,7 +1052,13 @@ void WebConfigServer::init() {
 
     server_->on("/api/wifidetect", HTTP_GET, []() {
         if (server_->hasArg("enabled")) {
-            GPIOManager::setWiFiDetectEnabled(server_->arg("enabled") == "true");
+            bool en = (server_->arg("enabled") == "true");
+            // 长通模式下人来上电不可用（配置仍可保存，但主循环跳过扫描）
+            if (en && GPIOManager::isLatched()) {
+                server_->send(200, "application/json", "{\"ok\":false,\"reason\":\"latch\"}");
+                return;
+            }
+            GPIOManager::setWiFiDetectEnabled(en);
         }
         if (server_->hasArg("target")) {
             GPIOManager::setWiFiDetectTarget(server_->arg("target").c_str());

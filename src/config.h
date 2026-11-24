@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.6"
+#define VERSION "5.8.1"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -109,6 +109,10 @@
 // MQTT 配置新版地址（648-724）
 #define EEPROM_MQTT_CONFIG_ADDR             648 // 77 bytes
 #define EEPROM_MQTT_MAGIC_ADDR_OLD          316 // 旧布局，仅用于迁移
+
+// 长通模式 EEPROM（主继电器强制常开，重启后保持）
+#define EEPROM_LATCH_ADDR        750  // 1 byte: 0x4C='L' 表示长通开启
+#define EEPROM_LATCH_MAGIC       0x4C
 
 // ===== 时间同步参数 =====
 // 时区固定东八区（CST-8），与 configTime 的第二/三参数语义保持一致

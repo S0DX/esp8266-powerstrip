@@ -160,7 +160,34 @@ void loop() {
     MQTTManager::handle();
     ESP.wdtFeed();
 
-    if (GPIOManager::isPowerOffEnabled() && SY7T609::isReady()) {
+    // 长通模式下的拔除检测：主继电器常开不能全关，改用"总功率低于拔除阈值
+    // 持续 5 秒 → 仅关从继电器"。阈值沿用功耗优化的 power_off_threshold 配置。
+    // 注意局限：SY7T609 测的是总进线功率（主负载+从负载混合），主路有高于
+    // 阈值的恒定负载时检测不会触发——宁可漏报不误动作（误关从会断电）。
+    // 此前尝试的 EMA 均值差值方案被主负载波动污染，已废弃。
+    static int latch_low_pwr_count = 0;
+    bool latch_slave_on = GPIOManager::isLatched() && GPIOManager::getRelaySlave();
+
+    if (latch_slave_on && SY7T609::isReady()) {
+        float p = SY7T609::getPower();
+        float th = GPIOManager::getPowerOffThreshold();
+        // p > 0：计量未就绪/刚上电的 0 值不参与判定
+        if (p > 0 && p < th) {
+            if (++latch_low_pwr_count >= 5) {
+                GPIOManager::setRelaySlave(false);
+                DBG_PRINTF("[PowerOff] Latch: slave load removed (power %.2fW < %.2fW x5s), slave OFF\n",
+                    p, th);
+                latch_low_pwr_count = 0;
+            }
+        } else {
+            latch_low_pwr_count = 0;
+        }
+    } else {
+        latch_low_pwr_count = 0;
+    }
+
+    // 非长通：原有拔除断电（功率低于阈值全关）
+    if (GPIOManager::isPowerOffEnabled() && !GPIOManager::isLatched() && SY7T609::isReady()) {
         static int low_power_count = 0;
         static bool monitoring = false;
         float power = SY7T609::getPower();
@@ -189,8 +216,8 @@ void loop() {
         }
     }
 
-    // 计费供电检测（与拔除断电互斥）
-    if (GPIOManager::isBillingEnabled()) {
+    // 计费供电检测（与拔除断电互斥）；长通模式下不可用
+    if (GPIOManager::isBillingEnabled() && !GPIOManager::isLatched()) {
         bool shouldStop = false;
         GPIOManager::BillingStopReason stopReason = GPIOManager::BILLING_STOP_NONE;
         float usedEnergyWh = GPIOManager::getBillingUsedEnergy();
@@ -225,7 +252,8 @@ void loop() {
 
     // WiFi 检测功能（人来开电）— 任何倒计时运行中完全暂停扫描（P0-C）
     // 倒计时结束后自动恢复，避免目标信号重现触发 setRelays 取消倒计时
-    if (GPIOManager::isWiFiDetectEnabled()) {
+    // 长通模式下人来上电不可用：跳过扫描，配置保留，关闭长通后自动恢复
+    if (GPIOManager::isWiFiDetectEnabled() && !GPIOManager::isLatched()) {
         bool in_countdown = GPIOManager::isTimerRunning();
         static bool scan_in_progress = false;
         static unsigned long scan_start_time = 0;
@@ -350,7 +378,8 @@ void loop() {
     }
 
     // 按键检测功能（锁定模式下物理按钮触发单次WiFi扫描）
-    if (GPIOManager::isButtonDetectScanRequested()) {
+    // 长通模式下同样不可用（属于人来上电体系）
+    if (GPIOManager::isButtonDetectScanRequested() && !GPIOManager::isLatched()) {
         static bool btn_scan_in_progress = false;
         static unsigned long btn_scan_start = 0;
         static bool btn_scan_in_countdown = false;
@@ -527,6 +556,23 @@ void buttonCallback(ButtonHandler::ClickType type) {
                 GPIOManager::setButtonDetectScanRequested();
             } else {
                 DBG_PRINTF("[Button] Locked: ignoring physical button input (use long press to turn off)\n");
+            }
+        }
+        return;
+    }
+
+    // 长通模式：主继电器不受控，单按切换从继电器（开↔关）；长按 20s 仍恢复出厂
+    if (GPIOManager::isLatched()) {
+        if (type == ButtonHandler::CLICK_PRESS) {
+            g_btn_press_start = now;
+            g_btn_state = BTN_FSM_PRESSED;   // 维持状态机，让 handleButtonStateMachine 的长按检测生效
+        } else if (type == ButtonHandler::CLICK_RELEASE) {
+            unsigned long duration = now - g_btn_press_start;
+            g_btn_state = BTN_FSM_IDLE;
+            if (duration < BUTTON_SINGLE_CLICK_MS) {
+                bool on = !GPIOManager::getRelaySlave();
+                GPIOManager::setRelaySlave(on);
+                DBG_PRINTF("[Button] Latch mode: slave relay %s\n", on ? "ON" : "OFF");
             }
         }
         return;

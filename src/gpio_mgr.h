@@ -23,6 +23,11 @@ public:
     static void setLocked(bool locked);
     static bool isLocked();
 
+    // 长通模式：主继电器强制常开，任何关闭请求都被忽略；
+    // 人来上电 / 计费供电 / 拔除断电 / 倒计时 / 24h 循环在该模式下不可用
+    static void setLatched(bool on);
+    static bool isLatched();
+
     static void triggerRelayEnable();
 
     static void setLEDBlue(bool on, bool blink = false);
@@ -145,6 +150,7 @@ private:
     static bool relay_master_state_;
     static bool relay_slave_state_;
     static bool locked_;
+    static bool latch_enabled_;
     static LEDMode red_mode_;
     static unsigned long blink_timer_;
     static bool blink_state_;
