@@ -250,7 +250,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
       <div class='page' id='mp0'></div>
       <div class='page' id='mp1'></div>
       <div class='page' id='mp2'></div>
-      <div class='page' id='mp3'></div>
+      <div class='page' id='mp3'>
+        <div class='more-row' onclick='showMoreSettings()'><span>更多设置</span><span style='color:#c7c7cc;font-weight:400'>›</span></div>
+      </div>
     </div>
     <div class='dots'>
       <span class='dot on' onclick='goPage(0)'></span>
@@ -574,10 +576,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 <div class="card-title">固件更新</div>
 <div id="updRow" style="font-size:12px;color:#8e8e93">当前版本 <span id="updCur">--</span> · 未检查</div>
 <div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
-<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">检测通过浏览器直查 GitHub（每小时一次）。升级方式：下载新版本 bin 后用上方「固件升级」上传安装。</p>
+<p style="font-size:11px;color:#8e8e93;margin:8px 0 0">检测由本页浏览器直查 GitHub（每小时一次）。升级流程：下载新版本 bin → 从本页上传到设备（局域网直传，不占用设备内存）。</p>
 <div style="display:flex;gap:8px;margin-top:10px">
   <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
-  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="doUpgradeNow()">前往下载</button>
+  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="downloadLatest()">下载最新固件</button>
+</div>
+<div style="border-top:1px solid #e5e5ea;margin-top:12px;padding-top:12px">
+  <button class="btn" style="width:100%" onclick="document.getElementById('updFile').click()">从本地文件升级</button>
+  <input type="file" id="updFile" accept=".bin" style="display:none" onchange="uploadFirmware(this.files[0])">
+  <div id="upgProg" style="display:none;margin-top:10px">
+    <div style="background:#f2f2f7;border-radius:6px;height:12px;overflow:hidden"><div id="upgBar" style="height:100%;width:0%;background:#007aff;transition:width .3s"></div></div>
+    <div id="upgMsg" style="font-size:11px;color:#8e8e93;margin-top:6px;text-align:center">--</div>
+  </div>
 </div>
 </div>
 
@@ -1058,8 +1068,8 @@ function renderCards(order){
 // ===== 手机版横滑分屏（v5.9）：桌面版保持纵向卡片流 =====
 var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
 var _mpg=1,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
-// 分屏编排：页0 数据 · 页1 控制+设备信息（默认页）· 页2 定时 · 页3 人来上电
-var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect']];
+// 分屏编排：页0 数据 · 页1 控制 · 页2 定时 · 页3 人来上电+设备信息（默认页=页1）
+var _PAGE_CARDS=[['power','history'],['relay'],['quicktimer'],['wifidetect','wifi']];
 function mobileArrange(){
   var mp=document.getElementById('mobilePages');
   if(!mp)return;
@@ -1103,6 +1113,9 @@ function mobileArrange(){
     if(allMs[i].querySelector('#sortList')) allMs[i].style.display='none';
   }
   if(!_mInited){_mInited=true;initSwipe();}
+  // 手机版"更多设置"入口保持在页 3 最底部（卡片分配后重排一次）
+  var mr=document.querySelector('#mp3 .more-row');
+  if(mr)document.getElementById('mp3').appendChild(mr);
   applyPage();
 }
 function pageW(){return document.querySelector('.pages-viewport').clientWidth;}
@@ -1179,6 +1192,8 @@ function checkUpdateNow(){
       if(!d||!d.tag_name){row.textContent='检查失败：GitHub 无法访问（国内网络可能受限），请到 Release 页手动查看';return;}
       var lv=String(d.tag_name).replace(/^v/,'');
       var av=semverGt(lv,VERSION_STR);
+      _latestAssetUrl='';
+      if(d.assets){for(var i=0;i<d.assets.length;i++){if(/\.bin$/.test(d.assets[i].name))_latestAssetUrl=d.assets[i].browser_download_url;}}
       renderUpdateState({ok:true,av:av,lv:lv});
       try{localStorage.setItem('ps_upd_latest',lv);localStorage.setItem('ps_upd_time',String(Date.now()));}catch(e){}
     })
@@ -1198,9 +1213,71 @@ function browserAutoCheck(){
   }
   checkUpdateNow();
 }
+var _latestAssetUrl='';
+function downloadLatest(){
+  if(_latestAssetUrl){window.open(_latestAssetUrl,'_blank');return;}
+  fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',{cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d&&d.assets){for(var i=0;i<d.assets.length;i++){if(/\.bin$/.test(d.assets[i].name)){window.open(d.assets[i].browser_download_url,'_blank');return;}}}
+      window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');
+    })
+    .catch(function(){window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');});
+}
+// 手机/电脑端上传升级：浏览器下载 bin → 本页局域网直传设备 /update（避开设备端 TLS 内存）
+function uploadFirmware(file){
+  if(!file)return;
+  if(!/\.bin$/i.test(file.name)){alert('请选择 .bin 固件文件');return;}
+  var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
+  prog.style.display='block';bar.style.width='0%';
+  msg.textContent='上传中 '+file.name+' …';
+  var fd=new FormData();
+  fd.append('file',file,file.name);
+  var xhr=new XMLHttpRequest();
+  xhr.open('POST','/update',true);
+  xhr.setRequestHeader('Authorization','Basic '+btoa('admin:admin'));
+  xhr.upload.onprogress=function(e){
+    if(e.lengthComputable){
+      var pct=Math.round(e.loaded/e.total*100);
+      bar.style.width=pct+'%';
+      msg.textContent='上传中 '+pct+'% · 写入 flash 后设备将自动重启';
+    }
+  };
+  xhr.onload=function(){
+    if(xhr.status===200||xhr.status===302){
+      bar.style.width='100%';
+      msg.textContent='上传完成，设备写入中并重启，等待设备上线…';
+      pollAfterUpgrade();
+    }else{
+      msg.textContent='上传失败：HTTP '+xhr.status+'（检查密码或重试）';
+    }
+  };
+  xhr.onerror=function(){msg.textContent='上传失败：网络错误';};
+  xhr.send(fd);
+}
+function pollAfterUpgrade(){
+  var msg=document.getElementById('upgMsg');
+  var n=0;
+  var t=setInterval(function(){
+    n++;
+    fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+      if(d.ver!==VERSION_STR){
+        clearInterval(t);
+        VERSION_STR=d.ver;
+        msg.textContent='升级成功！当前版本 v'+d.ver+'（即将刷新页面加载新界面）';
+        setTimeout(function(){location.reload();},1500);
+      }else if(n>40){
+        clearInterval(t);
+        msg.textContent='设备已上线但版本未变化——刷写可能未生效，请核对固件文件';
+      }
+    }).catch(function(){
+      if(n>40){clearInterval(t);msg.textContent='设备长时间未上线，请检查电源与网络';}
+    });
+  },3000);
+}
 function doUpgradeNow(){
-  alert('本设备 RAM 有限，不支持在线直接刷写。\n请从 GitHub Release 页下载新版本 bin，\n再通过「固件升级」上传安装。');
-  window.open('https://github.com/S0DX/esp8266-powerstrip/releases/latest','_blank');
+  alert('升级流程：\n1. 点「下载最新固件」，浏览器下载 bin 文件\n2. 点「从本地文件升级」选择刚下载的文件\n3. 页面自动上传到设备并等待重启');
+  downloadLatest();
 }
 function renderUpdateState(d){
   var row=document.getElementById('updRow'),badge=document.getElementById('updBadge');
