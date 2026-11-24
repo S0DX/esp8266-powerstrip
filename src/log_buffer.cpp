@@ -53,14 +53,11 @@ void log_buffer_init() {
     rtc_available = write_ok && read_ok && test_data[0] == 0x12345678 && test_data[1] == 0xAABBCCDD;
 }
 
-void log_buffer_printf(const char* fmt, ...) {
-    if (!fmt || !log_enabled) return;
+static void log_buffer_vprintf(const char* fmt, va_list args) {
+    if (!fmt) return;
 
     char temp[LOG_MAX_LINE_LEN];
-    va_list args;
-    va_start(args, fmt);
     vsnprintf(temp, sizeof(temp), fmt, args);
-    va_end(args);
     temp[sizeof(temp) - 1] = '\0';
 
     // 去掉末尾换行，统一存储单行
@@ -142,6 +139,21 @@ const char* log_buffer_get_line(int index) {
     int start = (log_index - log_count + LOG_MAX_LINES) % LOG_MAX_LINES;
     int idx = (start + index) % LOG_MAX_LINES;
     return log_lines[idx];
+}
+
+void log_buffer_printf(const char* fmt, ...) {
+    if (!log_enabled) return;
+    va_list args;
+    va_start(args, fmt);
+    log_buffer_vprintf(fmt, args);
+    va_end(args);
+}
+
+void log_buffer_printf_force(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    log_buffer_vprintf(fmt, args);
+    va_end(args);
 }
 
 bool log_buffer_is_enabled() {

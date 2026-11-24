@@ -8,6 +8,8 @@
 
 void log_buffer_init();
 void log_buffer_printf(const char* fmt, ...);
+// 无线升级排障专用：绕过系统日志开关强制记录（开关关闭时前端上报的日志也要可查）
+void log_buffer_printf_force(const char* fmt, ...);
 int log_buffer_count();
 const char* log_buffer_get_line(int index);
 

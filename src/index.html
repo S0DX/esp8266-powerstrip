@@ -1276,21 +1276,23 @@ function semverGt(a,b){
   }
   return false;
 }
+function frontLog(m){
+  try{fetch('/api/frontlog?m='+encodeURIComponent(String(m).substring(0,96)),{cache:'no-store'});}catch(e){}
+}
 function checkUpdateNow(){
   var row=document.getElementById('updRow');
-  row.textContent='正在检查更新（通过 GitHub）…';
-  fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',{cache:'no-store'})
-    .then(function(r){return r.json()})
-    .then(function(d){
-      if(!d||!d.tag_name){row.textContent='检查失败：GitHub 无法访问（国内网络可能受限），请到 Release 页手动查看';return;}
-      var lv=String(d.tag_name).replace(/^v/,'');
-      var av=semverGt(lv,VERSION_STR);
-      _latestAssetUrl='';
-      if(d.assets){for(var i=0;i<d.assets.length;i++){if(/\.bin$/.test(d.assets[i].name))_latestAssetUrl=d.assets[i].browser_download_url;}}
-      renderUpdateState({ok:true,av:av,lv:lv});
-      try{localStorage.setItem('ps_upd_latest',lv);localStorage.setItem('ps_upd_time',String(Date.now()));}catch(e){}
-    })
-    .catch(function(){row.textContent='检查失败：GitHub 无法访问（国内网络可能受限），请到 Release 页手动查看';});
+  row.textContent='正在检查更新（jsDelivr 探测）…';
+  frontLog('CHECK start ver='+VERSION_STR);
+  probeUpdate(function(d){
+    if(!d.found){
+      row.textContent=d.err||'未发现新版本';
+      frontLog('CHECK miss err='+(d.err||'none'));
+      return;
+    }
+    frontLog('CHECK hit v'+d.ver);
+    renderUpdateState({ok:true,av:true,lv:d.ver});
+    row.innerHTML='当前版本 v'+VERSION_STR+' · 最新 '+d.ver+'（校验值已取得）';
+  });
 }
 function browserAutoCheck(){
   if(!VERSION_STR)return;
@@ -1306,8 +1308,157 @@ function browserAutoCheck(){
   }
   checkUpdateNow();
 }
-var _latestAssetUrl='';
-// 手机/电脑端上传升级：浏览器下载 bin → 本页局域网直传设备 /update（避开设备端 TLS 内存）
+function doUpgradeNow(){
+  autoUpgradeFull();
+}
+// ===== 探测式版本发现：从当前版本向上逐个探测 jsDelivr tag 资源 =====
+// 依赖发版时 dist/ 内同时包含 firmware-x.y.z.bin 与 .bin.sha256
+var CDN='https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@';
+function nextVersions(cur,n){
+  var p=String(cur).split('.');
+  var maj=parseInt(p[0],10)||0,min=parseInt(p[1],10)||0,pat=parseInt(p[2],10)||0;
+  var out=[];
+  for(var i=1;i<=n;i++)out.push(maj+'.'+min+'.'+(pat+i));
+  return out;
+}
+function probeUpdate(cb){
+  frontLog('PROBE start cur='+VERSION_STR);
+  var cands=nextVersions(VERSION_STR,5);
+  var best=null,bestSha='';
+  var left=cands.length;
+  for(var i=0;i<cands.length;i++){
+    (function(v){
+      fetch(CDN+'v'+v+'/dist/firmware-'+v+'.bin.sha256',{cache:'no-store'})
+        .then(function(r){
+          frontLog('PROBE v'+v+' http='+r.status);
+          return r.ok?r.text():null;
+        })
+        .then(function(t){
+          if(t&&t.length>=64){best=v;bestSha=t.trim().split(/\s+/)[0];frontLog('PROBE v'+v+' HIT');}
+        })
+        .catch(function(e){
+          frontLog('PROBE v'+v+' ERR '+(e&&e.message?e.message:'fetch-fail'));
+        })
+        .then(function(){
+          left--;
+          if(left===0){
+            if(best){frontLog('PROBE final v'+best+' sha='+bestSha.substring(0,16));cb({found:true,ver:best,sha256:bestSha});}
+            else {frontLog('PROBE final MISS');cb({found:false,err:'探测 '+cands.join(', ')+' 均不存在或不可达'});}
+          }
+        });
+    })(cands[i]);
+  }
+}
+// 一键升级：探测（jsDelivr，国内可达）→ 下载 → SHA-256 校验 → 上传
+function autoUpgradeFull(){
+  if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
+  var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
+  prog.style.display='block';bar.style.width='0%';
+  var ua=(navigator.userAgent||'').substring(0,60);
+  frontLog('UPG start ver='+VERSION_STR+' ua='+ua);
+  msg.textContent='探测新版本（jsDelivr）…';
+  probeUpdate(function(d){
+    if(!d.found){
+      msg.textContent='未发现新版本或网络不可达';
+      bar.style.width='0%';
+      frontLog('UPG abort no-version');
+      return;
+    }
+    var tag=d.ver;
+    msg.textContent='发现 v'+tag+'，下载中…';
+    frontLog('UPG download v'+tag+' begin');
+    downloadAndFlash(CDN+'v'+tag+'/dist/firmware-'+tag+'.bin',tag,d.sha256,0,bar,msg)
+      .catch(function(e){
+        var em=e&&e.message?e.message:'unknown';
+        msg.textContent='升级失败：'+em;
+        bar.style.width='0%';
+        frontLog('UPG FAIL '+em);
+      });
+  });
+}
+function downloadAndFlash(url,ver,sha,size,bar,msg){
+  frontLog('DL begin '+url.substring(url.indexOf('@')));
+  return fetch(url,{cache:'no-store'}).then(function(res){
+    frontLog('DL http='+res.status);
+    if(!res.ok)throw new Error('固件 HTTP '+res.status);
+    var cl=parseInt(res.headers.get('content-length')||'0',10)||size;
+    // ReadableStream 降级：部分内核（微信 X5/旧 Safari）不支持 res.body
+    if(!res.body||!res.body.getReader){
+      frontLog('DL stream-unsupported, fallback blob');
+      return res.blob().then(function(b){
+        bar.style.width='45%';
+        msg.textContent='下载完成 '+Math.round(b.size/1024)+'KB';
+        frontLog('DL fallback done size='+b.size);
+        return b;
+      });
+    }
+    var reader=res.body.getReader();
+    var chunks=[],loaded=0;
+    function pump(){
+      return reader.read().then(function(r){
+        if(r.done){
+          frontLog('DL done size='+loaded);
+          return new Blob(chunks,{type:'application/octet-stream'});
+        }
+        chunks.push(r.value);loaded+=r.value.length;
+        if(cl)bar.style.width=Math.round(loaded/cl*45)+'%';
+        msg.textContent='下载固件 v'+ver+' … '+Math.round(loaded/1024)+'KB';
+        return pump();
+      });
+    }
+    return pump();
+  }).then(function(blob){
+    bar.style.width='50%';
+    if(size&&blob.size!==size)throw new Error('文件大小不符（'+blob.size+'≠'+size+'）');
+    if(!sha)throw new Error('无校验值');
+    msg.textContent='校验 SHA-256 …';
+    frontLog('HASH begin size='+blob.size);
+    return new Promise(function(resolve,reject){
+      var fr=new FileReader();
+      fr.onload=function(e){
+        try{
+          var hex=sha256Hex(new Uint8Array(e.target.result));
+          frontLog('HASH got='+hex.substring(0,16)+' expect='+sha.substring(0,16));
+          if(hex!==sha){frontLog('HASH MISMATCH');reject(new Error('校验不符，已中止升级'));return;}
+          bar.style.width='55%';
+          msg.textContent='校验通过，上传到设备…';
+          frontLog('HASH OK');
+          resolve(blob);
+        }catch(err){frontLog('HASH ERR '+(err&&err.message?err.message:'e'));reject(err);}
+      };
+      fr.onerror=function(){frontLog('HASH read-err');reject(new Error('文件读取失败'));};
+      fr.readAsArrayBuffer(blob);
+    });
+  }).then(function(blob){
+    if(!blob)return;
+    var fd=new FormData();
+    fd.append('file',blob,'firmware-'+ver+'.bin');
+    var xhr=new XMLHttpRequest();
+    xhr.open('POST','/update',true);
+    xhr.setRequestHeader('Authorization','Basic '+btoa('admin:admin'));
+    frontLog('UP begin');
+    xhr.upload.onprogress=function(e){
+      if(e.lengthComputable){
+        bar.style.width=(55+Math.round(e.loaded/e.total*40))+'%';
+        msg.textContent='上传到设备 '+Math.round(e.loaded/e.total*100)+'%';
+      }
+    };
+    xhr.onload=function(){
+      frontLog('UP http='+xhr.status);
+      if(xhr.status===200||xhr.status===302){
+        bar.style.width='100%';
+        msg.textContent='上传完成，设备写入中并重启…';
+        frontLog('UP OK, reboot wait');
+        pollAfterUpgrade();
+      }else{
+        msg.textContent='上传失败：HTTP '+xhr.status;
+        frontLog('UP FAIL http='+xhr.status);
+      }
+    };
+    xhr.onerror=function(){msg.textContent='上传失败：网络错误';frontLog('UP network-err');};
+    xhr.send(fd);
+  });
+}
 function pollAfterUpgrade(){
   var msg=document.getElementById('upgMsg');
   var n=0;

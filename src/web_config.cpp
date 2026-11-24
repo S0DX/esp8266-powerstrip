@@ -740,6 +740,18 @@ void WebConfigServer::init() {
         ESP.restart();
     });
 
+    // 前端调试日志上报（无线升级排障）：写入系统日志缓冲，[WEB] 前缀，仅 ASCII
+    server_->on("/api/frontlog", HTTP_GET, []() {
+        String msg = server_->arg("m");
+        if (msg.length() > 96) msg = msg.substring(0, 96);
+        for (unsigned int i = 0; i < msg.length(); i++) {
+            char c = msg[i];
+            if ((unsigned char)c < 32 || (unsigned char)c > 126) msg[i] = '?';
+        }
+        log_buffer_printf_force("[WEB] %s", msg.c_str());
+        server_->send(200, "application/json", "{\"ok\":true}");
+    });
+
     server_->on("/api/log", HTTP_GET, []() {
         String json = "[";
         int count = log_buffer_count();
