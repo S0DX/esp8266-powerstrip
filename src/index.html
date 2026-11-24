@@ -1184,6 +1184,86 @@ function initSwipe(){
     applyPage();_mswipe.lock='';
   });
 }
+// SHA-256 纯 JS 实现（ES5）：http 页面为非安全上下文，crypto.subtle 不可用，
+// 固件校验改用内置实现（已与标准库对拍验证：填充边界/460KB 量级/真实固件全部一致）
+// SHA-256 纯 JS 实现（ES5，无 Web Crypto 依赖——http 页面 crypto.subtle 不可用）
+// 输入 Uint8Array，输出小写 hex。标准 FIPS 180-4。
+function sha256Hex(bytes) {
+    var K = [
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+    ];
+    var H = [
+        0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+        0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
+    ];
+    function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+    var len = bytes.length;
+    var bitLenHi = Math.floor(len / 536870912);          // len*8 的高 32 位（len*8 可能超 2^32）
+    var bitLenLo = (len << 3) >>> 0;
+    // 消息填充：0x80 + 0x00 至 56 mod 64 + 8 字节大端位长
+    var totalLen = len + 1 + 8;
+    var blocks = Math.ceil(totalLen / 64);
+    var padded = new Uint8Array(blocks * 64);
+    padded.set(bytes);
+    padded[len] = 0x80;
+    // 8 字节大端位长写在最后
+    var p = padded.length - 8;
+    padded[p]     = (bitLenHi >>> 24) & 0xff;
+    padded[p + 1] = (bitLenHi >>> 16) & 0xff;
+    padded[p + 2] = (bitLenHi >>> 8) & 0xff;
+    padded[p + 3] = bitLenHi & 0xff;
+    padded[p + 4] = (bitLenLo >>> 24) & 0xff;
+    padded[p + 5] = (bitLenLo >>> 16) & 0xff;
+    padded[p + 6] = (bitLenLo >>> 8) & 0xff;
+    padded[p + 7] = bitLenLo & 0xff;
+
+    var w = new Array(64);
+    var a, b, c, d, e, f, g, h, t1, t2;
+    for (var blk = 0; blk < blocks; blk++) {
+        var off = blk * 64;
+        for (var i = 0; i < 16; i++) {
+            var j = off + i * 4;
+            w[i] = ((padded[j] << 24) | (padded[j + 1] << 16) | (padded[j + 2] << 8) | padded[j + 3]) >>> 0;
+        }
+        for (var i = 16; i < 64; i++) {
+            var x = w[i - 15], y = w[i - 2];
+            var s0 = rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3);
+            var s1 = rotr(y, 17) ^ rotr(y, 19) ^ (y >>> 10);
+            w[i] = (w[i - 16] + s0 + s1 + w[i - 7]) >>> 0;
+        }
+        a = H[0]; b = H[1]; c = H[2]; d = H[3];
+        e = H[4]; f = H[5]; g = H[6]; h = H[7];
+        for (var i = 0; i < 64; i++) {
+            var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+            var ch = (e & f) ^ (~e & g);
+            t1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+            var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+            var maj = (a & b) ^ (a & c) ^ (b & c);
+            t2 = (S0 + maj) >>> 0;
+            h = g; g = f; f = e;
+            e = (d + t1) >>> 0;
+            d = c; c = b; b = a;
+            a = (t1 + t2) >>> 0;
+        }
+        H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0;
+        H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+        H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0;
+        H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+    }
+    var out = '';
+    for (var i = 0; i < 8; i++) {
+        out += ('00000000' + H[i].toString(16)).slice(-8);
+    }
+    return out;
+}
+
 // ===== 检查更新：浏览器直查 GitHub API（设备端 TLS 受 RAM 限制不可用）=====
 // 每小时最多查一次（localStorage 节流），跨页面共享
 function semverGt(a,b){
@@ -1290,13 +1370,17 @@ function autoUpgradeFull(){
         return pump().then(function(blob){
           bar.style.width='50%';
           msg.textContent='校验 SHA-256 …';
-          return crypto.subtle.digest('SHA-256',blob).then(function(hash){
-            var hex='',arr=new Uint8Array(hash);
-            for(var i=0;i<arr.length;i++)hex+=('0'+arr[i].toString(16)).slice(-2);
-            if(mf.sha256&&hex!==mf.sha256)throw new Error('校验不符，已中止升级');
-            bar.style.width='55%';
-            msg.textContent='校验通过，上传到设备…';
-            return blob;
+          return new Promise(function(resolve,reject){
+            var fr=new FileReader();
+            fr.onload=function(e){
+              var hex=sha256Hex(new Uint8Array(e.target.result));
+              if(mf.sha256&&hex!==mf.sha256){reject(new Error('校验不符，已中止升级'));return;}
+              bar.style.width='55%';
+              msg.textContent='校验通过，上传到设备…';
+              resolve(blob);
+            };
+            fr.onerror=function(){reject(new Error('文件读取失败'));};
+            fr.readAsArrayBuffer(blob);
           });
         });
       });

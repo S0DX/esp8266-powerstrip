@@ -1,6 +1,6 @@
 {
-  "v": "5.9.2",
-  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.2/dist/firmware-v5.9.2.bin",
-  "notes": "status poll backoff, touch-action fix, local-upload entry removed (use System Settings firmware upgrade)",
-  "sha256": "1aa66c2ea9f8ba703d3509e2b4e0b24288e74346d05bd75a1d09d511a8855d60"
+  "v": "5.9.3",
+  "bin": "https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@v5.9.3/dist/firmware-v5.9.3.bin",
+  "notes": "pure-JS SHA-256 verification (http page lacks Web Crypto), poll backoff, touch-action fix",
+  "sha256": "8a400a2c5548d06636b6d06ae5490f8a2fcf9aa387438c8c558a540d40e2f275"
 }
