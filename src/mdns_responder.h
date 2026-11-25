@@ -46,7 +46,13 @@ private:
     static int findName(const uint8_t* buf, int len, int* nameLen, bool withLocal);
     // 构造并发送 A 记录响应（mDNS 组播+单播双发；LLMNR 单播）
     static void sendResponse(WiFiUDP& udp, const uint8_t* qname, int qnameLen,
-                             const IPAddress& ifIp, bool isMdns);
+                             const IPAddress& ifIp, bool isMdns, uint16_t queryId,
+                             uint16_t qType, uint16_t qClass,
+                             const uint8_t* questions, int qLen, int qdcount);
+    // AAAA 查询的空回答（NOERROR + ANCOUNT=0）：Android 解析器会先问 AAAA，
+    // 无答复会判解析失败；规范的空响应让它回退去问 A
+    static void sendEmptyResponse(WiFiUDP& udp, const IPAddress& ifIp, bool isMdns,
+                                  uint16_t queryId, const uint8_t* questions, int qLen, int qdcount);
 };
 
 #endif

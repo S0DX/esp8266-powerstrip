@@ -130,30 +130,42 @@ int MDNSResponder::findName(const uint8_t* buf, int len, int* nameLen, bool with
 }
 
 void MDNSResponder::sendResponse(WiFiUDP& udp, const uint8_t* qname, int qnameLen,
-                                 const IPAddress& ifIp, bool isMdns) {
+                                 const IPAddress& ifIp, bool isMdns, uint16_t queryId,
+                                 uint16_t qType, uint16_t qClass,
+                                 const uint8_t* questions, int qLen, int qdcount) {
     int n = qnameLen;
     if (n < 0 || n > 240) return;
+    // 回显完整问题区（多问题查询如 A+AAAA 必须逐一回显，否则严格客户端判响应不匹配）
+    if (qLen <= 0 || qLen + 20 > 240 || !questions) {
+        static uint8_t qbuf[260];
+        memcpy(qbuf, qname, n);
+        qbuf[n]     = (uint8_t)(qType >> 8);
+        qbuf[n + 1] = (uint8_t)(qType & 0xFF);
+        qbuf[n + 2] = (uint8_t)(qClass >> 8);
+        qbuf[n + 3] = (uint8_t)(qClass & 0xFF);
+        questions = qbuf; qLen = n + 4; qdcount = 1;
+    }
 
     uint8_t r[280];
     memset(r, 0, sizeof(r));
+    r[0] = (uint8_t)(queryId >> 8); r[1] = (uint8_t)(queryId & 0xFF);  // 回显 legacy 查询 ID
     r[2] = 0x84; r[3] = 0x00;                 // QR=1, AA=1
-    r[4] = 0;    r[5] = 1;                    // QDCOUNT=1
+    r[4] = (uint8_t)((qdcount >> 8) & 0xFF); r[5] = (uint8_t)(qdcount & 0xFF);  // QDCOUNT=原问题数
     r[6] = 0;    r[7] = 1;                    // ANCOUNT=1
-    memcpy(r + 12, qname, n);                 // question 名字（原样拷贝，保持大小写）
-    r[12 + n] = 0;     r[12 + n + 1] = 1;     // QTYPE=A
-    r[12 + n + 2] = 0; r[12 + n + 3] = 1;     // QCLASS=IN
-    r[12 + n + 4] = 0xC0; r[12 + n + 5] = 0x0C; // answer 名字压缩指针 -> offset 12
-    r[12 + n + 6] = 0;    r[12 + n + 7] = 1;  // TYPE=A
-    r[12 + n + 8] = 0x80; r[12 + n + 9] = 0x01; // CLASS=IN + cache-flush
+    memcpy(r + 12, questions, qLen);          // 完整问题区原样回显
+    int qEnd = 12 + qLen;
+    r[qEnd]     = 0xC0; r[qEnd + 1] = 0x0C;   // answer 名字压缩指针 -> 首个问题名
+    r[qEnd + 2] = 0;    r[qEnd + 3] = 1;      // TYPE=A
+    r[qEnd + 4] = 0x80; r[qEnd + 5] = 0x01;   // CLASS=IN + cache-flush
     uint32_t ttl = isMdns ? 120 : 30;         // LLMNR 用短 TTL（RFC 4795 建议 30s）
-    r[12 + n + 10] = (uint8_t)(ttl >> 24);
-    r[12 + n + 11] = (uint8_t)(ttl >> 16);
-    r[12 + n + 12] = (uint8_t)(ttl >> 8);
-    r[12 + n + 13] = (uint8_t)ttl;
-    r[12 + n + 14] = 0; r[12 + n + 15] = 4;   // RDLENGTH=4
+    r[qEnd + 6]  = (uint8_t)(ttl >> 24);
+    r[qEnd + 7]  = (uint8_t)(ttl >> 16);
+    r[qEnd + 8]  = (uint8_t)(ttl >> 8);
+    r[qEnd + 9]  = (uint8_t)ttl;
+    r[qEnd + 10] = 0; r[qEnd + 11] = 4;       // RDLENGTH=4
     uint32_t ip = (uint32_t)ifIp;
-    memcpy(r + 12 + n + 16, &ip, 4);
-    int total = 12 + n + 20;
+    memcpy(r + qEnd + 12, &ip, 4);
+    int total = qEnd + 16;
 
     // mDNS 标准查询（源端口 5353、ID=0）期望组播应答——只发单播会被
     // Windows/iOS 解析器忽略；legacy 查询（源端口随机）期望单播应答。
@@ -174,6 +186,34 @@ void MDNSResponder::sendResponse(WiFiUDP& udp, const uint8_t* qname, int qnameLe
         hostname_, isMdns ? ".local" : " (LLMNR)", ifIp.toString().c_str(),
         isMdns ? "mDNS" : "LLMNR",
         rip.toString().c_str(), rport);
+}
+
+void MDNSResponder::sendEmptyResponse(WiFiUDP& udp, const IPAddress& ifIp, bool isMdns,
+                                      uint16_t queryId, const uint8_t* questions, int qLen, int qdcount) {
+    if (qLen < 0 || qLen > 240) qLen = 0;
+    uint8_t r[280];
+    memset(r, 0, sizeof(r));
+    r[0] = (uint8_t)(queryId >> 8); r[1] = (uint8_t)(queryId & 0xFF);
+    r[2] = 0x84; r[3] = 0x00;                       // QR=1, AA=1
+    r[4] = (uint8_t)(qLen > 0 ? (qdcount >> 8) : 0);
+    r[5] = (uint8_t)(qLen > 0 ? (qdcount & 0xFF) : 0);
+    // ANCOUNT/NSCOUNT/ARCOUNT = 0
+    if (qLen > 0 && questions) memcpy(r + 12, questions, qLen);
+    int total = 12 + (qLen > 0 ? qLen : 0);
+
+    if (isMdns) {
+        udp.beginPacketMulticast(MDNS_ADDR, MDNS_PORT, ifIp);
+        udp.write(r, total);
+        udp.endPacket();
+    }
+    IPAddress rip = udp.remoteIP();
+    uint16_t rport = udp.remotePort();
+    if (rport != 0) {
+        udp.beginPacket(rip, rport);
+        udp.write(r, total);
+        udp.endPacket();
+    }
+    Serial.printf("[mDNS] %s AAAA -> empty answer (NOERROR)\n", hostname_);
 }
 
 void MDNSResponder::process(WiFiUDP& udp, const IPAddress& ifIp, bool isAp, bool isMdns) {
@@ -203,13 +243,49 @@ void MDNSResponder::process(WiFiUDP& udp, const IPAddress& ifIp, bool isAp, bool
     int pos = findName(buf, len, &nameLen, isMdns);
     if (pos < 0) return;
 
-    // 名字之后的 QTYPE/QCLASS
-    int off = pos + nameLen;
-    if (off + 4 > len) return;
-    uint16_t qtype = ((uint16_t)buf[off] << 8) | buf[off + 1];
-    // 只应答 A(1) 与 ANY(255) 查询
-    if (qtype != 1 && qtype != 255) return;
+    uint16_t queryId = ((uint16_t)buf[0] << 8) | buf[1];
 
-    // 响应里的 question 名字直接用查询报文中匹配到的完整名字（原样拷贝）
-    sendResponse(udp, buf + pos, nameLen, ifIp, isMdns);
+    // 遍历全部 question（Android/多栈客户端可能一次携带 A + AAAA）：
+    //   找到 A(1)/ANY(255) → 立即回 A 记录
+    //   只有 AAAA(28) → 回规范空响应（NOERROR/ANCOUNT=0），让客户端回退问 A
+    int off = pos + nameLen;   // 首个 question 的 QTYPE 位置
+    bool hasAaaa = false;
+    int qEnd = off;
+    // 预扫描：计算完整问题区结束偏移（用于完整回显）
+    int qTotalEnd = off;
+    {
+        int p = pos;
+        for (int k = 0; k < qdcount && p < len; k++) {
+            while (p < len && buf[p] != 0) {
+                if ((buf[p] & 0xC0) == 0xC0) { p += 2; break; }
+                p += 1 + (buf[p] & 0x3F);
+            }
+            if (p < len && buf[p] == 0) p += 1;
+            if (p + 4 > len) break;
+            p += 4;
+            qTotalEnd = p;
+        }
+    }
+    for (int qi = 0; qi < qdcount && off + 4 <= len; qi++) {
+        uint16_t qt = ((uint16_t)buf[off] << 8) | buf[off + 1];
+        uint16_t qc = ((uint16_t)buf[off + 2] << 8) | buf[off + 3];
+        if (qt == 1 || qt == 255) {
+            sendResponse(udp, buf + pos, nameLen, ifIp, isMdns, queryId, qt, qc,
+                         buf + pos, qTotalEnd - pos, qdcount);
+            return;
+        }
+        if (qt == 28) hasAaaa = true;
+        off += 4;
+        qEnd = off;
+        // 跳过下一个 question 的名字（不压缩形式；压缩指针 0xC0 直接 2 字节）
+        while (off < len && buf[off] != 0) {
+            if ((buf[off] & 0xC0) == 0xC0) { off += 1; break; }
+            off += 1 + (buf[off] & 0x3F);
+        }
+        if (off < len && buf[off] == 0) off += 1;
+    }
+    if (hasAaaa) {
+        int qLen = qEnd - pos;
+        if (qLen > 0) sendEmptyResponse(udp, ifIp, isMdns, queryId, buf + pos, qLen, 1);
+    }
 }
