@@ -767,6 +767,14 @@ void WebConfigServer::init() {
         server_->send(200, "application/json", "{\"ok\":true}");
     });
 
+    // 功耗排障：当前 WiFi 休眠模式（0=NONE 1=LIGHT 2=MODEM）与空闲秒数
+    server_->on("/api/pwr", HTTP_GET, []() {
+        char b[64];
+        snprintf(b, sizeof(b), "{\"slp\":%d,\"idle\":%lu}",
+                 (int)WiFi.getSleepMode(), WiFiManager::idleSeconds());
+        server_->send(200, "application/json", b);
+    });
+
     server_->on("/api/log", HTTP_GET, []() {
         String json = "[";
         int count = log_buffer_count();

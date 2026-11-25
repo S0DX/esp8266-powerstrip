@@ -1,4 +1,5 @@
 #include "wifi_mgr.h"
+#include "log_buffer.h"
 #include "config.h"
 #include "gpio_mgr.h"
 #include "time_mgr.h"
@@ -507,6 +508,11 @@ void WiFiManager::noteActivity() {
     last_activity_ms_ = millis();
 }
 
+unsigned long WiFiManager::idleSeconds() {
+    if (last_activity_ms_ == 0) return 0;
+    return (unsigned long)((millis() - last_activity_ms_) / 1000UL);
+}
+
 // 自适应休眠：把"是否活跃"作为判据，而非让 mDNS 常驻唤醒
 //  - 有 AP 客户端 / STA 未连接 → NONE_SLEEP（配网与保持连接）
 //  - 近 5 分钟内有 Web/MQTT 活动 → NONE_SLEEP（页面响应快、mDNS 可解析）
@@ -537,6 +543,9 @@ void WiFiManager::updateSleepMode() {
         current_sleep_mode_ = target;
         Serial.printf("[WiFi] Sleep mode switched to %s\n",
             target == WIFI_NONE_SLEEP ? "NONE" : "MODEM");
+        log_buffer_printf_force("[PWR] wifi sleep=%s idle=%lus",
+            target == WIFI_NONE_SLEEP ? "NONE" : "MODEM",
+            last_activity_ms_ ? (unsigned long)((millis() - last_activity_ms_) / 1000UL) : 0UL);
     }
 }
 

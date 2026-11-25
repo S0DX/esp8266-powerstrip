@@ -49,6 +49,7 @@ public:
     // Web/MQTT 等活动时调用：活跃期内保持 NONE_SLEEP（页面响应快、mDNS 可用），
     // 空闲超时后自动进入 MODEM_SLEEP 省电降温
     static void noteActivity();
+    static unsigned long idleSeconds();
 
 private:
     static WiFiState state_;
