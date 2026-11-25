@@ -630,8 +630,9 @@ var VERSION_STR='';
 
 function init(){
   try{
-    // 服务端用 ?b=<构建号> 做缓存穿透；页面加载后清理地址栏参数（刷新时服务端会自动再跳一次）
-    try{if(location.search.indexOf('b=')>=0)history.replaceState(null,'','/');}catch(e){}
+    // 服务端用 ?b=<构建号> 做缓存穿透。注意：不要清掉地址栏的 b 参数——
+    // 清掉后浏览器任何一次对 "/" 的请求（回前台/下拉刷新/预取）都会被 302 再次跳转，
+    // 表现为"整个页面被刷新一次"。保留参数则刷新时 b 匹配、直接 200，稳定不跳。
     renderCards(cardOrder);
     
     var scanBtn=document.getElementById('scanBtn');
@@ -667,7 +668,7 @@ function init(){
   loadCardOrder(0);
   var chipEl=document.getElementById('chipTime');
   if(chipEl) chipEl.addEventListener('click',manualTimeSync);
-  setInterval(renderChip,1000);
+  setInterval(renderChip,30000);   // 时钟只显示到分钟，30 秒刷一次足够，避免每秒重绘
   }catch(e){
     console.error('Error initializing buttons:',e);
   }
@@ -700,13 +701,19 @@ function closeModal(id){
   if(m)m.remove();
 }
 
+var _updating=false;
 function update(){
+  // 防重入：多处会主动调用 update()（点击/切回前台/启动补齐），
+  // 若无守卫会并发多个请求链，各自 scheduleUpdate 造成定时器叠加 → 请求频率倍增
+  if(_updating)return;
+  _updating=true;
   var _fetched=false;
   var _to=setTimeout(function(){
     if(_fetched)return;
     console.log('[update] fetch /api/status timeout (5s), retrying');
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
+    _updating=false;
     scheduleUpdate();
   },5000);
   fetch('/api/status').then(function(r){return r.json()}).then(function(d){
@@ -979,16 +986,16 @@ function update(){
     }catch(e){console.log('UI update error:',e);}
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
-    updateLog();
-    updateCrashLog();
+    refreshDiag();
+    _updating=false;
     scheduleUpdate();
   }).catch(function(e){console.log('Status fetch error:',e);
     _fetched=true;clearTimeout(_to);
     _failCnt++;
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
-    updateLog();
-    updateCrashLog();
+    refreshDiag();
+    _updating=false;
     scheduleUpdate();
   });
 }
@@ -999,18 +1006,24 @@ function fmt(s){
   var m=Math.floor((s%3600)/60);
   return(d>0?d+'天 ':'')+(h>0?h+'时 ':'')+m+'分';
 }
+var _lastLogText=null;
 function updateLog(){
   var slog=document.getElementById('sysLogToggle');
+  var el=document.getElementById('sysLog');
+  if(!el) return;
   if(slog && !slog.classList.contains('on')){
-    var el=document.getElementById('sysLog');
-    if(el) el.textContent='--';
+    if(_lastLogText!=='--'){el.textContent='--';_lastLogText='--';}
     return;
   }
   fetch('/api/log').then(function(r){return r.json()}).then(function(lines){
-    var el=document.getElementById('sysLog');
-    if(!el) return;
-    if(!lines || lines.length===0){el.textContent='--';return;}
-    el.textContent=lines.join('\n');
+    if(!lines || lines.length===0){
+      if(_lastLogText!=='--'){el.textContent='--';_lastLogText='--';}
+      return;
+    }
+    var txt=lines.join('\n');
+    if(txt===_lastLogText) return;   // 内容未变：不重写 DOM（避免整块重排造成的闪动）
+    _lastLogText=txt;
+    el.textContent=txt;
     el.scrollTop=el.scrollHeight;
   }).catch(function(e){console.log('Log fetch error:',e);});
 }
@@ -1037,14 +1050,29 @@ function toggleSysLog(){
       if(clc)clc.style.display=d.enabled?'flex':'none';
     }).catch(function(e){console.log('Sys log toggle error:',e);});
 }
+var _lastCrashText=null;
 function updateCrashLog(){
   fetch('/api/crash_log').then(function(r){return r.json()}).then(function(d){
     var el=document.getElementById('crashLog');
     if(!el) return;
-    if(!d || !d.logs || d.logs.length===0){el.textContent='--';return;}
-    el.textContent='上次复位: '+(d.reason||'unknown')+'\n'+d.logs.join('\n');
+    var txt;
+    if(!d || !d.logs || d.logs.length===0) txt='--';
+    else txt='上次复位: '+(d.reason||'unknown')+'\n'+d.logs.join('\n');
+    if(txt===_lastCrashText) return;   // 内容未变：跳过 DOM 写入
+    _lastCrashText=txt;
+    el.textContent=txt;
     el.scrollTop=el.scrollHeight;
   }).catch(function(e){console.log('Crash log fetch error:',e);});
+}
+
+// 诊断类刷新降频：日志/崩溃日志 10 秒一次（原来跟随 3 秒状态轮询，导致频繁重排）
+var _lastDiagAt=0;
+function refreshDiag(){
+  var now=Date.now();
+  if(now-_lastDiagAt<10000)return;
+  _lastDiagAt=now;
+  updateLog();
+  updateCrashLog();
 }
 function toggleAutoCloseAP(){
   var el=document.getElementById('autoCloseAPToggle');
@@ -2976,6 +3004,7 @@ document.addEventListener('DOMContentLoaded',function(){
     if(lo && !lo.classList.contains('hide')){
       console.log('[boot] loading overlay force-hidden after 3s, kick-starting update loop');
       lo.classList.add('hide');
+      _updating=false;
       scheduleUpdate();
     }
   },3000);
@@ -3009,8 +3038,8 @@ function scheduleUpdate(extra){
     _pausedByHidden=true;
     return;
   }
-  var baseDelay=3000;
-  if(_failCnt===0&&(Date.now()-_lastInteract)>300000) baseDelay=10000;  // 挂屏无操作降频
+  var baseDelay=5000;   // 常规 5 秒（原 3 秒，降低数字跳动带来的视觉刷新感）
+  if(_failCnt===0&&(Date.now()-_lastInteract)>300000) baseDelay=15000;  // 挂屏无操作降频
   // 设备不可达（升级重启/信号弱）时指数退避，最高 15s
   var delay=extra||(_failCnt>0?Math.min(15000,3000+2000*_failCnt):baseDelay);
   _updateTimer=setTimeout(function(){update()},delay);
