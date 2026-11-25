@@ -284,6 +284,16 @@ pre{scrollbar-width:none}
 </div>
 
 
+<div id="cfmM" class="modal modal-layer-1" style="display:none">
+<div class="modal-content">
+<div class="modal-title" id="cfmTitle">提示</div>
+<div id="cfmBody" style="font-size:13px;color:#3c3c43;line-height:1.75"></div>
+<div style="display:flex;gap:10px;margin-top:18px">
+<button class="btn btn-ghost" style="flex:1" onclick="cfmCancel()">取消</button>
+<button class="btn" id="cfmOk" style="flex:1" onclick="cfmConfirm()">确定</button>
+</div>
+</div>
+</div>
 <div id="wifiM" class="modal modal-layer-1" style="display:none">
 <div class="modal-content">
 <div class="modal-title">连接 WiFi</div>
@@ -595,7 +605,7 @@ pre{scrollbar-width:none}
 <div class="settings-footer">
   <div class="f1">Smart Power Strip v<span id="footerVer">--</span></div>
   <div class="f2">项目与固件：<a href="https://github.com/S0DX/esp8266-powerstrip" target="_blank">github.com/S0DX/esp8266-powerstrip</a></div>
-  <div class="f2">作者：S0DX · 固件基于 ESP8266 Arduino Core</div>
+  <div class="f2">作者：S0DX</div>
 </div>
 
 </div>
@@ -1310,103 +1320,64 @@ function doUpgradeNow(){
 // ===== 探测式版本发现：从当前版本向上逐个探测 jsDelivr tag 资源 =====
 // 依赖发版时 dist/ 内同时包含 firmware-x.y.z.bin 与 .bin.sha256
 var CDN='https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@';
-function nextVersions(cur,n){
-  var p=String(cur).split('.');
-  var maj=parseInt(p[0],10)||0,min=parseInt(p[1],10)||0,pat=parseInt(p[2],10)||0;
-  var out=[];
-  for(var i=1;i<=n;i++)out.push(maj+'.'+min+'.'+(pat+i));
-  return out;
-}
-// 版本发现（并行合并取最大）：
-//   A. jsDelivr 列表 API —— 全量版本，支持跨 minor（有索引延迟）
-//   B. tag 探测 +1..+3 —— 文件级实时（弥补列表延迟）
-// 两者并行，取最高版本；校验值优先用探测结果，列表结果再补取
+
+// 版本发现：jsDelivr 包信息 API（一次请求返回全部版本，零 404）。
+// 列表索引有分钟级延迟（发版后稍等即可检测到）；仅当该 API 请求失败时
+// 才回退 tag 探测（会产生 404，但属于网络异常时的兜底）。
 function fetchLatestInfo(cb){
-  var cands=nextVersions(VERSION_STR,3);
-  var best='',bestSha='',pend=cands.length+1;
-  function finalize(){
-    pend--;
-    if(pend>0)return;
-    if(!best||!semverGt(best,VERSION_STR)){cb({found:false,upToDate:true,ver:VERSION_STR});return;}
-    if(bestSha){cb({found:true,ver:best,sha256:bestSha});return;}
-    // 版本来自列表但没有校验值 → 补取该版本 sha256
-    fetch(CDN+'v'+best+'/dist/firmware-'+best+'.bin.sha256',{cache:'no-store'})
-      .then(function(r){return r.ok?r.text():null;})
-      .then(function(t){
-        if(!t||t.length<64){cb({found:false,err:'新版本校验值缺失'});return;}
-        frontLog('LATEST sha='+t.trim().substring(0,16));
-        cb({found:true,ver:best,sha256:t.trim().split(/\s+/)[0]});
-      })
-      .catch(function(e){frontLog('LATEST sha err '+((e&&e.message)||'net'));cb({found:false,err:'校验值获取失败'});});
-  }
-  // A. 列表 API
-  frontLog('LATEST list api begin');
-  fetch('https://data.jsdelivr.com/v1/packages/gh/S0DX/esp8266-powerstrip',{cache:'no-store'})
+  frontLog('LATEST query list api');
+  // 加时间戳绕开 CDN 对 API 响应的缓存（否则会拿到旧版本列表，检测不到新版本）
+  fetch('https://data.jsdelivr.com/v1/packages/gh/S0DX/esp8266-powerstrip?t='+Date.now(),{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('list http '+r.status);return r.json();})
     .then(function(d){
+      var best='';
       var vs=(d&&d.versions)||[];
-      var apiBest='';
       for(var i=0;i<vs.length;i++){
         var v=String(vs[i].version||'');
-        if(/^\d+\.\d+\.\d+$/.test(v)&&(!apiBest||semverGt(v,apiBest)))apiBest=v;
+        if(/^\d+\.\d+\.\d+$/.test(v)&&(!best||semverGt(v,best)))best=v;
       }
-      frontLog('LATEST list='+apiBest);
-      if(apiBest&&(!best||semverGt(apiBest,best)))best=apiBest;
-      finalize();
-    })
-    .catch(function(e){frontLog('LATEST list fail '+((e&&e.message)||'net'));finalize();});
-  // B. tag 探测（实时）
-  for(var i=0;i<cands.length;i++){
-    (function(v){
-      fetch(CDN+'v'+v+'/dist/firmware-'+v+'.bin.sha256',{cache:'no-store'})
+      if(!best)throw new Error('no versions');
+      frontLog('LATEST='+best+' cur='+VERSION_STR);
+      if(!semverGt(best,VERSION_STR)){cb({found:false,upToDate:true,ver:best});return;}
+      fetch(CDN+'v'+best+'/dist/firmware-'+best+'.bin.sha256',{cache:'no-store'})
         .then(function(r){return r.ok?r.text():null;})
         .then(function(t){
-          if(t&&t.length>=64){
-            if(!best||semverGt(v,best)){best=v;bestSha=t.trim().split(/\s+/)[0];}
-            frontLog('LATEST probe hit v'+v);
-          }
-          finalize();
+          if(!t||t.length<64){cb({found:false,err:'新版本校验值缺失'});return;}
+          frontLog('LATEST sha='+t.trim().substring(0,16));
+          cb({found:true,ver:best,sha256:t.trim().split(/\s+/)[0]});
         })
-        .catch(function(){finalize();});
-    })(cands[i]);
-  }
+        .catch(function(e){frontLog('LATEST sha err '+((e&&e.message)||'net'));cb({found:false,err:'校验值获取失败'});});
+    })
+    .catch(function(e){
+      // 兜底：@latest 固定地址的版本信息文件（不含任何写死的版本号）
+      frontLog('LATEST list fail '+((e&&e.message)||'net')+' -> fallback latest.json');
+      fetch(CDN+'latest/dist/latest.json',{cache:'no-store'})
+        .then(function(r){if(!r.ok)throw new Error('latest http '+r.status);return r.json();})
+        .then(function(j){
+          var v=String(j.v||'');
+          if(!/^\d+\.\d+\.\d+$/.test(v))throw new Error('bad latest.json');
+          frontLog('LATEST json='+v);
+          if(!semverGt(v,VERSION_STR)){cb({found:false,upToDate:true,ver:v});return;}
+          if(!j.sha256){cb({found:false,err:'新版本校验值缺失'});return;}
+          cb({found:true,ver:v,sha256:j.sha256});
+        })
+        .catch(function(e2){frontLog('LATEST all fail '+((e2&&e2.message)||'net'));cb({found:false,err:'检测服务暂不可达，请稍后重试'});});
+    });
 }
-function probeUpdate(cb){
-  frontLog('PROBE start cur='+VERSION_STR);
-  var cands=nextVersions(VERSION_STR,5);
-  var best=null,bestSha='';
-  var left=cands.length,netErr=0,httpOk=0;
-  for(var i=0;i<cands.length;i++){
-    (function(v){
-      fetch(CDN+'v'+v+'/dist/firmware-'+v+'.bin.sha256',{cache:'no-store'})
-        .then(function(r){
-          httpOk++;
-          frontLog('PROBE v'+v+' http='+r.status);
-          return r.ok?r.text():null;
-        })
-        .then(function(t){
-          if(t&&t.length>=64){if(!best||semverGt(v,best)){best=v;bestSha=t.trim().split(/\s+/)[0];}frontLog('PROBE v'+v+' HIT');}
-        })
-        .catch(function(e){
-          netErr++;
-          frontLog('PROBE v'+v+' ERR '+(e&&e.message?e.message:'fetch-fail'));
-        })
-        .then(function(){
-          left--;
-          if(left===0){
-            if(best){frontLog('PROBE final v'+best+' sha='+bestSha.substring(0,16));cb({found:true,ver:best,sha256:bestSha});}
-            else if(netErr>=cands.length){frontLog('PROBE final NETER');cb({found:false,err:'网络不可达，无法检测更新'});}
-            else {frontLog('PROBE final up-to-date');cb({found:false,upToDate:true,err:null});}
-          }
-        });
-    })(cands[i]);
-  }
-}
+
 // 一键升级：探测（jsDelivr，国内可达）→ 下载 → SHA-256 校验 → 上传
 var _upgrading=false;
 function autoUpgradeFull(){
   if(_upgrading)return;
-  if(!confirm('开始自动升级？\n1. 下载新固件（约 460KB）\n2. 自动 SHA-256 校验\n3. 局域网上传到设备并自动重启\n全程约 1-2 分钟，期间请勿断电'))return;
+  showConfirm('在线升级固件',
+    '<div style="line-height:2">'+
+    '<div>① 下载新固件（约 460KB）</div>'+
+    '<div>② SHA-256 完整性校验</div>'+
+    '<div>③ 上传到设备并自动重启</div></div>'+
+    '<div style="margin-top:12px;background:#fff7e6;border-radius:10px;padding:10px 12px;font-size:12px;color:#b26a00">全程约 1–2 分钟，期间请勿断电</div>',
+    '开始升级', startUpgradeFlow);
+}
+function startUpgradeFlow(){
   _upgrading=true;
   var prog=document.getElementById('upgProg'),bar=document.getElementById('upgBar'),msg=document.getElementById('upgMsg');
   prog.style.display='block';bar.style.width='0%';
@@ -1676,19 +1647,30 @@ function latchBlocked(){
 
 function toggleLatch(){
   var target=!_latch;
-  var msg=target
-    ? '开启长通模式？\n· 主继电器立即打开并保持常开，不受任何控制\n· 倒计时/24小时循环/MQTT/按键将只控制副继电器\n· 人来上电暂停（配置保留，关闭长通后恢复），计费供电结束\n· 拔除检测：总功率低于阈值 5 秒 → 只关副继电器'
-    : '关闭长通模式？\n主继电器保持当前开启状态，之后可再手动关闭。';
-  if(!confirm(msg))return;
-  fetch('/api/latch?enabled='+(target?'true':'false')).then(function(r){return r.json()}).then(function(){
+  if(target){
+    showConfirm('开启长通模式',
+      '<div style="margin-bottom:8px;color:#1c1c1e">主继电器立即打开并保持常开，不受任何控制。</div>'+
+      '<div style="background:#f2f2f7;border-radius:10px;padding:10px 12px;font-size:12px;color:#636366;line-height:1.8">'+
+      '<div>· 倒计时 / 24 小时循环 / MQTT / 按键只控制副继电器</div>'+
+      '<div>· 人来上电暂停（配置保留，关闭后恢复），计费供电结束</div>'+
+      '<div>· 拔除检测：总功率低于阈值 5 秒 → 只关副继电器</div></div>',
+      '开启', function(){setLatch(true);});
+  }else{
+    showConfirm('关闭长通模式',
+      '<div style="color:#1c1c1e">主继电器保持当前开启状态，之后可再手动关闭。</div>',
+      '关闭', function(){setLatch(false);});
+  }
+}
+function setLatch(on){
+  fetch('/api/latch?enabled='+(on?'true':'false')).then(function(r){return r.json()}).then(function(){
     update();
-  }).catch(function(){alert('操作失败：设备无响应');});
+  }).catch(function(){showToast('操作失败：设备无响应');});
 }
 
 function tr(w){
   if(_relayBusy) return;
   // 长通模式：主继电器保持常开，不接受关闭操作
-  if(w=='m' && _latch){alert('长通模式开启中，主继电器保持常开');return;}
+  if(w=='m' && _latch){showToast('长通模式开启中，主继电器保持常开');return;}
   _relayBusy=true;
   var t=document.getElementById(w=='m'?'rm':'rs');
   var other=document.getElementById(w=='m'?'rs':'rm');
@@ -2553,6 +2535,39 @@ function saveMqtt(){
   fetch('/api/mqtt',{method:'POST',body:data}).then(function(r){return r.json()}).then(function(d){
     if(d.ok)alert('MQTT设置已保存！将尝试连接。');
   });
+}
+
+// ===== 通用确认弹窗（复用 WiFi 弹窗样式，替代系统 confirm）=====
+var _cfmCb=null;
+function showConfirm(title,bodyHtml,okText,cb){
+  document.getElementById('cfmTitle').textContent=title;
+  document.getElementById('cfmBody').innerHTML=bodyHtml;
+  document.getElementById('cfmOk').textContent=okText||'确定';
+  _cfmCb=cb||null;
+  document.getElementById('cfmM').style.display='flex';
+}
+function cfmCancel(){
+  document.getElementById('cfmM').style.display='none';
+  _cfmCb=null;
+}
+function cfmConfirm(){
+  var cb=_cfmCb;
+  document.getElementById('cfmM').style.display='none';
+  _cfmCb=null;
+  if(cb)cb();
+}
+function showToast(msg){
+  var t=document.getElementById('toastM');
+  if(!t){
+    t=document.createElement('div');
+    t.id='toastM';
+    t.style.cssText='position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:rgba(0,0,0,.78);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;z-index:400;max-width:80%;text-align:center;transition:opacity .25s';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;
+  t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(function(){t.style.opacity='0';},1800);
 }
 
 function showWifi(){

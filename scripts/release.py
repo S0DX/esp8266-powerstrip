@@ -98,10 +98,13 @@ def main():
     sha = hashlib.sha256(bin_path.read_bytes()).hexdigest()
     sha_path = dist / (bin_name + '.sha256')
     sha_path.write_text(f'{sha}  {bin_name}\n', encoding='utf-8')
+    # 固定地址的版本信息（页面检测的 @latest 兜底数据源，不含硬编码版本号）
+    latest_json = dist / 'latest.json'
+    latest_json.write_text(json.dumps({'v': ver, 'sha256': sha, 'size': bin_path.stat().st_size}), encoding='utf-8')
     print(f'dist/{bin_name}: {bin_path.stat().st_size} bytes | sha256: {sha}')
 
     # 3. git
-    for f in ['src/config.h', f'dist/{bin_name}', f'dist/{bin_name}.sha256']:
+    for f in ['src/config.h', f'dist/{bin_name}', f'dist/{bin_name}.sha256', 'dist/latest.json']:
         run(['git', 'add', str(root / f)])
     run(['git', 'commit', '-m', 'release: v' + ver])
     run(['git', 'tag', tag])
