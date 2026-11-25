@@ -255,13 +255,6 @@ pre{scrollbar-width:none}
 </div>
 </div>
 
-<div class="card" data-card="pwr">
-<div class="card-title">功耗优化</div>
-<div class="info-row"><span class="lbl">休眠状态</span><span id="pwrSlp" style="font-size:12px;color:#8e8e93">--</span></div>
-<div class="info-row" style="margin-bottom:4px">
-  <span class="lbl">保持局域网域名常醒</span>
-  <div class="toggle" id="mdaToggle" onclick="toggleMdnsAlways()"></div>
-</div>
 <div style="font-size:11px;color:#8e8e93;line-height:1.65">关闭时：空闲 5 分钟进入省电模式，WiFi 间歇休眠（约省 50mA，芯片降温 5-8°C）。开启后：WiFi 保持常醒，power.local 随时可解析，但功耗回到最高。</div>
 </div>
  
@@ -519,6 +512,11 @@ pre{scrollbar-width:none}
   <div class="toggle" id="autoCloseAPToggle" onclick="toggleAutoCloseAP()"></div>
 </div>
 <p style="font-size:11px;color:#8e8e93;margin:4px 0 0">开启后 STA 连接 5 分钟自动关闭 AP，STA 断开时自动恢复。默认关闭，关闭前可通过 AP 访问此开关。</p>
+<div class="info-row" style="margin-top:12px;margin-bottom:4px">
+  <span class="lbl">保持局域网域名常醒</span>
+  <div class="toggle" id="mdaToggle" onclick="toggleMdnsAlways()"></div>
+</div>
+<p style="font-size:11px;color:#8e8e93;margin:4px 0 0">关闭时空闲 5 分钟自动进入省电模式（WiFi 间歇休眠，省约 50mA，芯片降温 5-8°C）；开启后 WiFi 保持常醒，power.local 随时可解析，但功耗回到最高。当前：<span id="pwrSlp" style="color:#34c759">--</span></p>
 <div class="info-row" style="margin-top:12px;margin-bottom:10px">
   <span class="lbl">限制 WiFi 发射功率</span>
   <div class="toggle" id="wifiTxPowerToggle" onclick="toggleWiFiTxPower()"></div>
@@ -986,7 +984,8 @@ function update(){
     }catch(e){console.log('UI update error:',e);}
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
-    refreshDiag();
+    updateLog();
+    updateCrashLog();
     _updating=false;
     scheduleUpdate();
   }).catch(function(e){console.log('Status fetch error:',e);
@@ -994,7 +993,8 @@ function update(){
     _failCnt++;
     var lo=document.getElementById('loadingOverlay');
     if(lo)lo.classList.add('hide');
-    refreshDiag();
+    updateLog();
+    updateCrashLog();
     _updating=false;
     scheduleUpdate();
   });
@@ -1103,15 +1103,12 @@ function loadCardOrder(retries){
     }
   });
 }
-var cardOrder=[0,1,2,3,4,5,6];
-var cardVisibility=0x7F;
-var cardNames=['继电器控制','人来上电','实时电量','用电历史','WiFi 状态','快速倒计时','功耗优化'];
+var cardOrder=[0,1,2,3,4,5];
+var cardVisibility=0x3F;
+var cardNames=['继电器控制','人来上电','实时电量','用电历史','WiFi 状态','快速倒计时'];
 
 function renderCards(order){
-  cardOrder=order||[0,1,2,3,4,5,6];
-  // 旧固件保存的排序/可见性里没有第 7 张卡（功耗优化）→ 自动补上并默认显示
-  if(cardOrder.indexOf(6)<0)cardOrder.push(6);
-  if(!(cardVisibility&0x40))cardVisibility|=0x40;
+  cardOrder=order||[0,1,2,3,4,5];
   var container=document.getElementById('cardsContainer');
   if(!container)return;
   container.innerHTML='';
@@ -1150,7 +1147,7 @@ function renderCards(order){
 var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
 var _mpg=1,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
 // 分屏编排：页0 数据 · 页1 控制 · 页2 定时 · 页3 人来上电+设备信息（默认页=页1）
-var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect','pwr']];
+var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect']];
 function mobileArrange(){
   var mp=document.getElementById('mobilePages');
   if(!mp)return;
@@ -3038,8 +3035,8 @@ function scheduleUpdate(extra){
     _pausedByHidden=true;
     return;
   }
-  var baseDelay=5000;   // 常规 5 秒（原 3 秒，降低数字跳动带来的视觉刷新感）
-  if(_failCnt===0&&(Date.now()-_lastInteract)>300000) baseDelay=15000;  // 挂屏无操作降频
+  var baseDelay=3000;   // 常规 3 秒
+  if(_failCnt===0&&(Date.now()-_lastInteract)>300000) baseDelay=10000;  // 挂屏无操作降频
   // 设备不可达（升级重启/信号弱）时指数退避，最高 15s
   var delay=extra||(_failCnt>0?Math.min(15000,3000+2000*_failCnt):baseDelay);
   _updateTimer=setTimeout(function(){update()},delay);
