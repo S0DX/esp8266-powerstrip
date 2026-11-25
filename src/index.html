@@ -1362,44 +1362,75 @@ function doUpgradeNow(){
 // 依赖发版时 dist/ 内同时包含 firmware-x.y.z.bin 与 .bin.sha256
 var CDN='https://cdn.jsdelivr.net/gh/S0DX/esp8266-powerstrip@';
 
-// 版本发现：jsDelivr 包信息 API（一次请求返回全部版本，零 404）。
-// 列表索引有分钟级延迟（发版后稍等即可检测到）；仅当该 API 请求失败时
-// 才回退 tag 探测（会产生 404，但属于网络异常时的兜底）。
+// 版本发现（三源并行取最大，各自独立容错）：
+//   A. jsDelivr 列表 API（国内可达，有索引延迟）
+//   B. @latest/dist/latest.json（固定地址，各边缘缓存不一致）
+//   C. GitHub API releases/latest（实时，国内常被墙 → 2.5s 超时后忽略）
 function fetchLatestInfo(cb){
-  frontLog('LATEST query list api');
-  // 加时间戳绕开 CDN 对 API 响应的缓存（否则会拿到旧版本列表，检测不到新版本）
+  var bestVer='',bestSha='',pend=3,done=false;
+  function report(){
+    pend--;
+    if(pend>0||done)return;
+    done=true;
+    if(!bestVer||!semverGt(bestVer,VERSION_STR)){cb({found:false,upToDate:true,ver:VERSION_STR});return;}
+    if(bestSha){cb({found:true,ver:bestVer,sha256:bestSha});return;}
+    // 版本已知但无校验值 → 补取
+    fetch(CDN+'v'+bestVer+'/dist/firmware-'+bestVer+'.bin.sha256',{cache:'no-store'})
+      .then(function(r){return r.ok?r.text():null;})
+      .then(function(t){
+        if(!t||t.length<64){cb({found:false,err:'新版本校验值缺失'});return;}
+        cb({found:true,ver:bestVer,sha256:t.trim().split(/\s+/)[0]});
+      })
+      .catch(function(){cb({found:false,err:'校验值获取失败'});});
+  }
+  function offer(v,sha){
+    v=String(v||'');
+    if(!/^\d+\.\d+\.\d+$/.test(v))return;
+    if(!bestVer||semverGt(v,bestVer)){bestVer=v;bestSha=sha||'';}
+  }
+  // A. 列表 API
   fetch('https://data.jsdelivr.com/v1/packages/gh/S0DX/esp8266-powerstrip?t='+Date.now(),{cache:'no-store'})
-    .then(function(r){if(!r.ok)throw new Error('list http '+r.status);return r.json();})
+    .then(function(r){if(!r.ok)throw 0;return r.json();})
     .then(function(d){
-      var best='';
       var vs=(d&&d.versions)||[];
-      for(var i=0;i<vs.length;i++){
-        var v=String(vs[i].version||'');
-        if(/^\d+\.\d+\.\d+$/.test(v)&&(!best||semverGt(v,best)))best=v;
-      }
-      if(!best)throw new Error('no versions');
-      frontLog('LATEST='+best+' cur='+VERSION_STR);
-      if(!semverGt(best,VERSION_STR)){
-        // 列表可能索引滞后 → 用 @latest 固定地址（实测实时）再核实一次
-        frontLog('LATEST list not newer -> verify latest.json');
-        checkLatestJson(cb);
-        return;
-      }
-      fetch(CDN+'v'+best+'/dist/firmware-'+best+'.bin.sha256',{cache:'no-store'})
-        .then(function(r){return r.ok?r.text():null;})
-        .then(function(t){
-          if(!t||t.length<64){cb({found:false,err:'新版本校验值缺失'});return;}
-          frontLog('LATEST sha='+t.trim().substring(0,16));
-          cb({found:true,ver:best,sha256:t.trim().split(/\s+/)[0]});
-        })
-        .catch(function(e){frontLog('LATEST sha err '+((e&&e.message)||'net'));cb({found:false,err:'校验值获取失败'});});
+      var mx='';
+      for(var i=0;i<vs.length;i++){var v=String(vs[i].version||'');if(/^\d+\.\d+\.\d+$/.test(v)&&(!mx||semverGt(v,mx)))mx=v;}
+      frontLog('SRC list='+mx);
+      offer(mx,'');
     })
-    .catch(function(e){
-      frontLog('LATEST list fail '+((e&&e.message)||'net')+' -> fallback latest.json');
-      checkLatestJson(cb);
-    });
+    .catch(function(){frontLog('SRC list fail');})
+    .then(report);
+  // B. @latest/latest.json
+  fetch(CDN+'latest/dist/latest.json',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw 0;return r.json();})
+    .then(function(j){
+      frontLog('SRC json='+String(j.v||''));
+      offer(j.v,j.sha256||'');
+    })
+    .catch(function(){frontLog('SRC json fail');})
+    .then(report);
+  // C. GitHub API（2.5s 超时，被墙时快速放弃）
+  (function(){
+    var ctrl=null,to=null;
+    try{
+      if(window.AbortController){ctrl=new AbortController();to=setTimeout(function(){try{ctrl.abort();}catch(e){}},2500);}
+    }catch(e){}
+    fetch('https://api.github.com/repos/S0DX/esp8266-powerstrip/releases/latest',
+          {cache:'no-store',signal:ctrl?ctrl.signal:undefined})
+      .then(function(r){if(!r.ok)throw 0;return r.json();})
+      .then(function(rel){
+        var tag=String(rel.tag_name||'').replace(/^v/,'');
+        var sha='';
+        if(rel.assets){for(var i=0;i<rel.assets.length;i++){
+          if(/\.bin$/.test(rel.assets[i].name))sha=String(rel.assets[i].digest||'').replace(/^sha256:/,'');
+        }}
+        frontLog('SRC gh='+tag);
+        offer(tag,sha);
+      })
+      .catch(function(){frontLog('SRC gh fail/timeout');})
+      .then(function(){if(to)clearTimeout(to);report();});
+  })();
 }
-// @latest 固定地址的版本信息（发版时写入真实版本号+校验值，无任何写死推算）
 function checkLatestJson(cb){
   fetch(CDN+'latest/dist/latest.json',{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('latest http '+r.status);return r.json();})
