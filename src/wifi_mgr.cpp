@@ -18,6 +18,7 @@ bool WiFiManager::tx_power_limited_ = false;
 unsigned long WiFiManager::sta_connected_time_ = 0;
 unsigned long WiFiManager::last_sleep_update_ = 0;
 WiFiSleepType WiFiManager::current_sleep_mode_ = WIFI_NONE_SLEEP;
+unsigned long WiFiManager::last_activity_ms_ = 0;
 // P1: 动态功率提升状态
 float WiFiManager::current_tx_power_ = 14.0f;          // 默认 14dBm
 unsigned long WiFiManager::power_boost_until_ = 0;      // 0=未提升
@@ -502,25 +503,33 @@ void WiFiManager::updateMDNS() {
     MDNSResponder::handle();
 }
 
-// 根据 AP 客户端连接状态和 STA 状态动态切换 WiFi sleep 模式：
-// - 有 AP 客户端连接或 STA 未连接时保持 NONE_SLEEP，保证响应速度
-// - mDNS responder 运行期间强制 NONE_SLEEP（modem sleep 会丢 5353 组播查询包）
-// - STA 已连接且无 AP 客户端时启用 MODEM_SLEEP，降低功耗和发热
+void WiFiManager::noteActivity() {
+    last_activity_ms_ = millis();
+}
+
+// 自适应休眠：把"是否活跃"作为判据，而非让 mDNS 常驻唤醒
+//  - 有 AP 客户端 / STA 未连接 → NONE_SLEEP（配网与保持连接）
+//  - 近 5 分钟内有 Web/MQTT 活动 → NONE_SLEEP（页面响应快、mDNS 可解析）
+//  - 空闲超过 5 分钟 → MODEM_SLEEP（省约 50mA，芯片降温 5-10°C；
+//    此时 mDNS 可能丢组播查询，但用户不在操作，下次访问 HTTP 会立即唤醒）
+// 说明：原实现只要 mDNS responder 运行就永久 NONE_SLEEP，导致 24 小时满功率发热。
 void WiFiManager::updateSleepMode() {
     if (millis() - last_sleep_update_ < 1000) {
         return;
     }
     last_sleep_update_ = millis();
 
+    constexpr unsigned long ACTIVITY_WINDOW_MS = 5UL * 60UL * 1000UL;  // 活跃窗口 5 分钟
+    bool recently_active = (last_activity_ms_ != 0) &&
+                           ((unsigned long)(millis() - last_activity_ms_) < ACTIVITY_WINDOW_MS);
+
     WiFiSleepType target = WIFI_MODEM_SLEEP;
     if (state_ != STATE_CONNECTED) {
         target = WIFI_NONE_SLEEP;
     } else if (WiFi.softAPgetStationNum() > 0) {
         target = WIFI_NONE_SLEEP;
-    }
-    // mDNS responder 监听 5353 组播，modem sleep 会丢查询包，运行期间强制常醒
-    if (MDNSResponder::running()) {
-        target = WIFI_NONE_SLEEP;
+    } else if (recently_active) {
+        target = WIFI_NONE_SLEEP;   // 活跃期内保持 mDNS 组播监听
     }
 
     if (target != current_sleep_mode_) {

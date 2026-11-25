@@ -45,6 +45,11 @@ public:
     static float getCurrentTxPower();
     static bool isTxPowerBoosted();
 
+public:
+    // Web/MQTT 等活动时调用：活跃期内保持 NONE_SLEEP（页面响应快、mDNS 可用），
+    // 空闲超时后自动进入 MODEM_SLEEP 省电降温
+    static void noteActivity();
+
 private:
     static WiFiState state_;
     static unsigned long connection_start_time_;
@@ -58,6 +63,7 @@ private:
     static bool tx_power_limited_;
     static unsigned long sta_connected_time_;
     static unsigned long last_sleep_update_;
+    static unsigned long last_activity_ms_;   // 最近一次 Web/MQTT 活动时间（自适应休眠）
     static WiFiSleepType current_sleep_mode_;
     // P1: 动态功率提升状态
     static float current_tx_power_;        // 当前实际发射功率

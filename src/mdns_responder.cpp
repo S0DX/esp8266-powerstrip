@@ -1,6 +1,7 @@
 #include "mdns_responder.h"
 #include "wifi_mgr.h"
 #include <ESP8266WiFi.h>
+#include "log_buffer.h"
 
 // mDNS 组播地址与端口（RFC 6762）；LLMNR 组播地址与端口（RFC 4795，Windows 原生）
 static const IPAddress MDNS_ADDR(224, 0, 0, 251);
@@ -186,6 +187,15 @@ void MDNSResponder::sendResponse(WiFiUDP& udp, const uint8_t* qname, int qnameLe
         hostname_, isMdns ? ".local" : " (LLMNR)", ifIp.toString().c_str(),
         isMdns ? "mDNS" : "LLMNR",
         rip.toString().c_str(), rport);
+    {
+        static unsigned long lastAns = 0;
+        if (millis() - lastAns > 1500) {
+            lastAns = millis();
+            log_buffer_printf_force("[MDNS] ANS %s->%s rport=%u %s",
+                ifIp.toString().c_str(), rip.toString().c_str(), rport,
+                isMdns ? "mc+uc" : "uc");
+        }
+    }
 }
 
 void MDNSResponder::sendEmptyResponse(WiFiUDP& udp, const IPAddress& ifIp, bool isMdns,
@@ -220,6 +230,18 @@ void MDNSResponder::process(WiFiUDP& udp, const IPAddress& ifIp, bool isAp, bool
     int len = udp.parsePacket();
     if (len <= 0) return;
 
+    // 排障日志：记录 mDNS/LLMNR 查询到达（限流 3s，避免刷屏），用于远程判断
+    // 安卓等客户端是否真的发出了查询（ERR_NAME_NOT_RESOLVED 时区分"没问"还是"答得不对"）
+    {
+        static unsigned long lastLog = 0;
+        if (millis() - lastLog > 3000) {
+            lastLog = millis();
+            log_buffer_printf_force("[MDNS] q from %s len=%d %s%s",
+                udp.remoteIP().toString().c_str(), len,
+                isMdns ? "mdns" : "llmnr", isAp ? "(ap)" : "(sta)");
+        }
+    }
+
     // 来源网段过滤：AP_STA 双模下 lwip 会把局域网来的组播同时投递给两个已
     // join 组播的 socket，若两个实例都应答，查询者会收到 192.168.0.x 与
     // 192.168.4.1 两个 A 记录并可能采用不可路由的 AP IP（实测踩坑）。
@@ -242,6 +264,16 @@ void MDNSResponder::process(WiFiUDP& udp, const IPAddress& ifIp, bool isAp, bool
     int nameLen = 0;
     int pos = findName(buf, len, &nameLen, isMdns);
     if (pos < 0) return;
+
+    // 精确排障：确认查询的确是 <hostname>.local（区分系统服务发现广播与真实解析请求）
+    {
+        static unsigned long lastHit = 0;
+        if (millis() - lastHit > 1500) {
+            lastHit = millis();
+            log_buffer_printf_force("[MDNS] HIT %s.local from %s rport=%u",
+                hostname_, udp.remoteIP().toString().c_str(), udp.remotePort());
+        }
+    }
 
     uint16_t queryId = ((uint16_t)buf[0] << 8) | buf[1];
 

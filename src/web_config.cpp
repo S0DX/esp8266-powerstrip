@@ -79,6 +79,7 @@ struct ReqLogEntry { uint32_t t; char tag[6]; };
 static ReqLogEntry req_log[REQ_LOG_N];
 static uint8_t req_log_idx = 0;
 static void log_req(const char* tag) {
+    WiFiManager::noteActivity();   // 有 Web 活动 → 自适应休眠保持唤醒
     strncpy(req_log[req_log_idx].tag, tag, 5);
     req_log[req_log_idx].tag[5] = 0;
     req_log[req_log_idx].t = millis();
