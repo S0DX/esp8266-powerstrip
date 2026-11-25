@@ -1292,11 +1292,11 @@ function checkUpdateNow(){
   var row=document.getElementById('updRow');
   row.textContent='正在检查更新（jsDelivr 探测）…';
   frontLog('CHECK start ver='+VERSION_STR);
-  probeUpdate(function(d){
+  fetchLatestInfo(function(d){
     _checkingNow=false;
     if(!d.found){
       row.textContent=d.err?('检查失败：'+d.err):('当前已是最新版本 v'+VERSION_STR);
-      frontLog('CHECK miss err='+(d.err||'up-to-date'));
+      frontLog('CHECK miss '+(d.err||'up-to-date'));
       return;
     }
     frontLog('CHECK hit v'+d.ver);
@@ -1316,6 +1316,36 @@ function nextVersions(cur,n){
   var out=[];
   for(var i=1;i<=n;i++)out.push(maj+'.'+min+'.'+(pat+i));
   return out;
+}
+// 版本发现主路径：jsDelivr 包信息 API，一次请求返回全部版本（降序），
+// 支持跨 minor 版本，无需逐个探测；失败时回退探测式
+function fetchLatestInfo(cb){
+  frontLog('LATEST query data.jsdelivr.com');
+  fetch('https://data.jsdelivr.com/v1/packages/gh/S0DX/esp8266-powerstrip',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error('data http '+r.status);return r.json();})
+    .then(function(d){
+      var best='';
+      var vs=(d&&d.versions)||[];
+      for(var i=0;i<vs.length;i++){
+        var v=String(vs[i].version||'');
+        if(/^\d+\.\d+\.\d+$/.test(v)&&(!best||semverGt(v,best)))best=v;
+      }
+      if(!best)throw new Error('no versions');
+      frontLog('LATEST='+best+' cur='+VERSION_STR);
+      if(!semverGt(best,VERSION_STR)){cb({found:false,upToDate:true,ver:best});return;}
+      fetch(CDN+'v'+best+'/dist/firmware-'+best+'.bin.sha256',{cache:'no-store'})
+        .then(function(r){return r.ok?r.text():null;})
+        .then(function(t){
+          if(!t||t.length<64){cb({found:false,err:'新版本校验值缺失'});return;}
+          frontLog('LATEST sha='+t.trim().substring(0,16));
+          cb({found:true,ver:best,sha256:t.trim().split(/\s+/)[0]});
+        })
+        .catch(function(e){frontLog('LATEST sha err '+((e&&e.message)||'net'));cb({found:false,err:'校验值获取失败'});});
+    })
+    .catch(function(e){
+      frontLog('LATEST data-api fail ' + ((e&&e.message)||'net') + ' -> fallback probe');
+      probeUpdate(cb);
+    });
 }
 function probeUpdate(cb){
   frontLog('PROBE start cur='+VERSION_STR);
@@ -1341,8 +1371,8 @@ function probeUpdate(cb){
           left--;
           if(left===0){
             if(best){frontLog('PROBE final v'+best+' sha='+bestSha.substring(0,16));cb({found:true,ver:best,sha256:bestSha});}
-            else if(netErr>=cands.length){frontLog('PROBE final NETER'+(0));cb({found:false,err:'网络不可达，无法检测更新'});}
-            else {frontLog('PROBE final up-to-date');cb({found:false,err:null});}
+            else if(netErr>=cands.length){frontLog('PROBE final NETER');cb({found:false,err:'网络不可达，无法检测更新'});}
+            else {frontLog('PROBE final up-to-date');cb({found:false,upToDate:true,err:null});}
           }
         });
     })(cands[i]);
@@ -1358,8 +1388,8 @@ function autoUpgradeFull(){
   prog.style.display='block';bar.style.width='0%';
   var ua=(navigator.userAgent||'').substring(0,60);
   frontLog('UPG start ver='+VERSION_STR+' ua='+ua);
-  msg.textContent='探测新版本（jsDelivr）…';
-  probeUpdate(function(d){
+  msg.textContent='查询最新版本…';
+  fetchLatestInfo(function(d){
     if(!d.found){
       msg.textContent=d.err?('升级失败：'+d.err):('当前已是最新版本 v'+VERSION_STR+'，无需升级');
       bar.style.width='0%';
