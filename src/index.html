@@ -28,6 +28,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .toggle-lg.on::after{transform:translateX(34px)}
 .timer-btn{display:block;width:100%;padding:16px;background:#e9e9eb;color:#1c1c1e;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin:10px 0;transition:all .3s}
 .timer-btn.active{background:#ff9500;color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
 .btn{display:block;width:100%;padding:14px;background:#007aff;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;margin:10px 0}
 .btn:active{background:#0056b3}
 .btn-ghost{background:#f2f2f7;color:#007aff}
@@ -235,7 +236,8 @@ pre{scrollbar-width:none}
 <div class="info-row"><span class="lbl">连接状态</span><span id="ws">--</span></div>
 <div class="info-row"><span class="lbl">信号强度</span><span id="wr">--</span></div>
 <div class="info-row"><span class="lbl">已连接SSID</span><span id="wssid">--</span></div>
-<div class="info-row"><span class="lbl">设备IP</span><span id="otaip">--</span></div>
+<div class="info-row"><span class="lbl">设备IP</span><span id="otaip" onclick="copyIp()" style="cursor:pointer;color:#007aff;font-weight:600">--</span></div>
+<div id="ipHint" style="font-size:11px;color:#8e8e93;margin:-4px 0 8px">点按 IP 可复制访问地址（安卓浏览器请用 IP，不支持 .local）</div>
 <div class="info-row"><span class="lbl">WiFi断开红灯告警</span><div class="toggle" id="redLedToggle" onclick="toggleRedLed()"></div></div>
 <button class="btn btn-ghost" id="wifiBtn">连接 WiFi</button>
 </div>
@@ -577,7 +579,7 @@ pre{scrollbar-width:none}
     <input type="text" id="hostname" style="flex:1;padding:10px;border:1px solid #e5e5ea;border-radius:8px;font-size:14px" maxlength="10" placeholder="power" oninput="validateHostname(this)">
     <button class="timer-btn" style="width:auto;margin:0;padding:0 16px;height:38px" onclick="saveHostname()">保存</button>
   </div>
-  <p id="hostnameHint" style="font-size:11px;color:#8e8e93;margin:4px 0 0">访问地址为 <span id="hostnamePreview">power.local</span>，1-10 位小写字母/数字/连字符</p>
+  <p id="hostnameHint" style="font-size:11px;color:#8e8e93;margin:4px 0 0">访问地址为 <span id="hostnamePreview">power.local</span>（iOS/电脑可用；安卓浏览器不支持 .local，请用 IP 访问）</p>
   <div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn btn-ghost" id="restartBtn" onclick="confirmRestart()">重启设备</button>
   </div>
@@ -592,7 +594,7 @@ pre{scrollbar-width:none}
 <div id="updBadge" class="upd-badge" style="display:none"><span class="ub">发现新版本 <span id="updLv">--</span></span></div>
 <div style="display:flex;gap:8px;margin-top:10px">
   <button class="btn btn-ghost" style="width:auto;padding:8px 14px;flex:1" onclick="checkUpdateNow()">检查更新</button>
-  <button class="btn" style="width:auto;padding:8px 14px;flex:1" onclick="autoUpgradeFull()">一键升级</button>
+  <button class="btn" id="autoUpdBtn" style="width:auto;padding:8px 14px;flex:1" onclick="autoUpgradeFull()" disabled>一键升级</button>
 </div>
 <button class="btn btn-ghost" id="otaBtn" style="width:100%;margin-top:8px">手动固件更新</button>
 <div style="font-size:11px;color:#8e8e93;margin-top:10px">手动刷入 .bin 文件请使用「系统设置 → 固件升级」入口。</div>
@@ -1295,6 +1297,12 @@ function frontLog(m){
     i.src='/api/frontlog?m='+encodeURIComponent(m)+'&t='+Date.now();
   }catch(e){}
 }
+function setUpdBtn(en){
+  var b=document.getElementById('autoUpdBtn');
+  if(!b)return;
+  b.disabled=!en;
+  b.style.opacity=en?'1':'.45';
+}
 var _checkingNow=false;
 function checkUpdateNow(){
   if(_checkingNow)return;
@@ -1305,11 +1313,13 @@ function checkUpdateNow(){
   fetchLatestInfo(function(d){
     _checkingNow=false;
     if(!d.found){
+      setUpdBtn(false);
       row.textContent=d.err?('检查失败：'+d.err):('当前已是最新版本 v'+VERSION_STR);
       frontLog('CHECK miss '+(d.err||'up-to-date'));
       return;
     }
     frontLog('CHECK hit v'+d.ver);
+    setUpdBtn(true);
     renderUpdateState({ok:true,av:true,lv:d.ver});
     row.innerHTML='当前版本 v'+VERSION_STR+' · 最新 '+d.ver+'（校验值已取得）';
   });
@@ -1338,7 +1348,12 @@ function fetchLatestInfo(cb){
       }
       if(!best)throw new Error('no versions');
       frontLog('LATEST='+best+' cur='+VERSION_STR);
-      if(!semverGt(best,VERSION_STR)){cb({found:false,upToDate:true,ver:best});return;}
+      if(!semverGt(best,VERSION_STR)){
+        // 列表可能索引滞后 → 用 @latest 固定地址（实测实时）再核实一次
+        frontLog('LATEST list not newer -> verify latest.json');
+        checkLatestJson(cb);
+        return;
+      }
       fetch(CDN+'v'+best+'/dist/firmware-'+best+'.bin.sha256',{cache:'no-store'})
         .then(function(r){return r.ok?r.text():null;})
         .then(function(t){
@@ -1349,20 +1364,23 @@ function fetchLatestInfo(cb){
         .catch(function(e){frontLog('LATEST sha err '+((e&&e.message)||'net'));cb({found:false,err:'校验值获取失败'});});
     })
     .catch(function(e){
-      // 兜底：@latest 固定地址的版本信息文件（不含任何写死的版本号）
       frontLog('LATEST list fail '+((e&&e.message)||'net')+' -> fallback latest.json');
-      fetch(CDN+'latest/dist/latest.json',{cache:'no-store'})
-        .then(function(r){if(!r.ok)throw new Error('latest http '+r.status);return r.json();})
-        .then(function(j){
-          var v=String(j.v||'');
-          if(!/^\d+\.\d+\.\d+$/.test(v))throw new Error('bad latest.json');
-          frontLog('LATEST json='+v);
-          if(!semverGt(v,VERSION_STR)){cb({found:false,upToDate:true,ver:v});return;}
-          if(!j.sha256){cb({found:false,err:'新版本校验值缺失'});return;}
-          cb({found:true,ver:v,sha256:j.sha256});
-        })
-        .catch(function(e2){frontLog('LATEST all fail '+((e2&&e2.message)||'net'));cb({found:false,err:'检测服务暂不可达，请稍后重试'});});
+      checkLatestJson(cb);
     });
+}
+// @latest 固定地址的版本信息（发版时写入真实版本号+校验值，无任何写死推算）
+function checkLatestJson(cb){
+  fetch(CDN+'latest/dist/latest.json',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error('latest http '+r.status);return r.json();})
+    .then(function(j){
+      var v=String(j.v||'');
+      if(!/^\d+\.\d+\.\d+$/.test(v))throw new Error('bad latest.json');
+      frontLog('LATEST json='+v);
+      if(!semverGt(v,VERSION_STR)){cb({found:false,upToDate:true,ver:v});return;}
+      if(!j.sha256){cb({found:false,err:'新版本校验值缺失'});return;}
+      cb({found:true,ver:v,sha256:j.sha256});
+    })
+    .catch(function(e){frontLog('LATEST json fail '+((e&&e.message)||'net'));cb({found:false,err:null,upToDate:true,ver:VERSION_STR});});
 }
 
 // 一键升级：探测（jsDelivr，国内可达）→ 下载 → SHA-256 校验 → 上传
@@ -1386,22 +1404,25 @@ function startUpgradeFlow(){
   msg.textContent='查询最新版本…';
   fetchLatestInfo(function(d){
     if(!d.found){
-      msg.textContent=d.err?('升级失败：'+d.err):('当前已是最新版本 v'+VERSION_STR+'，无需升级');
-      bar.style.width='0%';
-      frontLog('UPG abort '+(d.err||'up-to-date'));
+      setUpdBtn(false);
+      prog.style.display='none';           // 无更新/失败时收起进度条，避免"空空一条"
       _upgrading=false;
+      frontLog('UPG abort '+(d.err||'up-to-date'));
+      if(d.err)showToast('升级失败：'+d.err);
+      else showToast('当前已是最新版本 v'+VERSION_STR);
       return;
     }
     var tag=d.ver;
+    setUpdBtn(true);
     msg.textContent='发现 v'+tag+'，下载中…';
     frontLog('UPG download v'+tag+' begin');
     downloadAndFlash(CDN+'v'+tag+'/dist/firmware-'+tag+'.bin',tag,d.sha256,0,bar,msg)
       .catch(function(e){
         var em=e&&e.message?e.message:'unknown';
-        msg.textContent='升级失败：'+em;
-        bar.style.width='0%';
+        prog.style.display='none';
         frontLog('UPG FAIL '+em);
         _upgrading=false;
+        showToast('升级失败：'+em);
       });
   });
 }
@@ -2556,6 +2577,30 @@ function cfmConfirm(){
   _cfmCb=null;
   if(cb)cb();
 }
+function copyIp(){
+  var el=document.getElementById('otaip');
+  var ip=el?el.textContent.trim():'';
+  if(!ip||ip==='--'){showToast('尚未获取 IP');return;}
+  var url='http://'+ip+'/';
+  function ok(){showToast('已复制：'+url);}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(ok,function(){legacyCopy(url,ok);});
+      return;
+    }
+  }catch(e){}
+  legacyCopy(url,ok);
+}
+function legacyCopy(text,cb){
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=text;ta.style.cssText='position:fixed;left:-9999px';
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    cb();
+  }catch(e){showToast('复制失败，请手动记录：'+text);}
+}
 function showToast(msg){
   var t=document.getElementById('toastM');
   if(!t){
@@ -2875,11 +2920,39 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 var _updateTimer=null;
 var _failCnt=0;
+// ===== 轮询自适应（省电）=====
+// 1) 页面隐藏（切走/锁屏）→ 完全暂停轮询，让设备空闲 5 分钟后进入 MODEM_SLEEP
+// 2) 页面可见但 5 分钟无交互（挂屏）→ 降频到 10s
+// 3) 正常使用 → 3s；设备不可达 → 指数退避最高 15s
+var _pausedByHidden=false;
+var _lastInteract=Date.now();
+(function(){
+  var bump=function(){_lastInteract=Date.now();};
+  ['touchstart','mousedown','click','keydown','scroll','wheel'].forEach(function(ev){
+    document.addEventListener(ev,bump,{passive:true});
+  });
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden&&_pausedByHidden){
+      _pausedByHidden=false;
+      _lastInteract=Date.now();
+      _failCnt=0;
+      update();                       // 立刻刷新一次，恢复轮询
+    }
+  });
+})();
 function scheduleUpdate(extra){
   if(_updateTimer)clearTimeout(_updateTimer);
-  // 设备不可达（升级重启/信号弱）时指数退避，最高 15s；恢复后回到 3s
-  var delay=extra||(_failCnt>0?Math.min(15000,3000+2000*_failCnt):3000);
+  if(_histTimer)clearTimeout(_histTimer);
+  if(document.hidden){               // 页面不可见：停轮询，避免每 3s 唤醒设备
+    _pausedByHidden=true;
+    return;
+  }
+  var baseDelay=3000;
+  if(_failCnt===0&&(Date.now()-_lastInteract)>300000) baseDelay=10000;  // 挂屏无操作降频
+  // 设备不可达（升级重启/信号弱）时指数退避，最高 15s
+  var delay=extra||(_failCnt>0?Math.min(15000,3000+2000*_failCnt):baseDelay);
   _updateTimer=setTimeout(function(){update()},delay);
+  _histTimer=setTimeout(function(){loadHistory()},document.hidden?600000:60000);
 }
 var _histTimer=null;
 function scheduleHistory(){
