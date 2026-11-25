@@ -48,6 +48,9 @@ void WiFiManager::init() {
     // 读取 WiFi 发射功率限制开关（默认不限制）
     tx_power_limited_ = (EEPROM.read(EEPROM_WIFI_TX_POWER_LIMIT_ADDR) == 0x01);
 
+    // 设置 DHCP 主机名：多数家用路由器会把该名称注册进本地 DNS，
+    // 安卓浏览器不支持 .local（mDNS）解析，但可通过 http://power 或 power.lan 访问
+    WiFi.hostname("power");
     WiFi.mode(WIFI_AP_STA);
     // 默认启用 MODEM_SLEEP，后续根据 AP 客户端连接状态动态调整
     WiFi.setSleepMode(WIFI_MODEM_SLEEP);

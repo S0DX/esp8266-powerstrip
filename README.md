@@ -2,9 +2,13 @@
 
 # 🔌 智能插排固件
 
-### ESP8266 Smart Power Strip Firmware · v5.8.1
+### ESP8266 Smart Power Strip Firmware · v5.9.13
 
 <img src="docs/screenshots/banner.svg" alt="Smart Power Strip Banner" width="640"/>
+
+[![Latest Release](https://img.shields.io/github/v/release/S0DX/esp8266-powerstrip?label=release)](https://github.com/S0DX/esp8266-powerstrip/releases)
+[![Downloads](https://img.shields.io/github/downloads/S0DX/esp8266-powerstrip/total?label=downloads)](https://github.com/S0DX/esp8266-powerstrip/releases)
+[![Stars](https://img.shields.io/github/stars/S0DX/esp8266-powerstrip)](https://github.com/S0DX/esp8266-powerstrip/stargazers)
 
 **基于 ESP8266 (ESP-12E/F) 的智能插排固件** · 远程控制 / 电能计量 / 人来上电 / 计费供电 / Captive Portal
 
@@ -394,6 +398,59 @@ GET /api/mdns_hostname?name=mypower      # 设置域名为 mypower.local
 | `/api/reset_energy` | POST | 清零电量记录 |
 | `/api/crashdump` | GET | 读取最近一次崩溃的寄存器现场（RTC 保存，见「技术细节 · 踩坑实录」）|
 | `/api/reqlog` | GET | 读取关键请求的设备端进出日志（环形缓冲 64 条，诊断用）|
+
+## 🌐 访问地址与安卓兼容性
+
+| 访问方式 | iOS/Safari | 安卓浏览器 | Windows/macOS |
+|---------|-----------|-----------|---------------|
+| `http://power.local`（mDNS） | ✅ 支持 | ❌ **不支持** | ✅ 支持 |
+| `http://<设备IP>`（如 192.168.0.196） | ✅ | ✅ | ✅ |
+| `http://power` / `power.lan`（路由器 DNS） | ✅ | ✅（取决于路由器） | ✅ |
+
+**安卓为什么访问不了 `power.local`**：
+`.local` 域名依赖 mDNS（组播 DNS）解析。iOS 通过 Bonjour 原生支持；而 **Android 系统级的 mDNS 解析直到 Android 12 才加入，且 Chrome for Android 至今不解析 `.local` 域名**——所以安卓浏览器拿到的是「DNS 解析失败」，与设备无关。
+
+**安卓用户的解决方案**（任选其一）：
+1. **直接用 IP 访问**：`http://<设备IP>`（页面「WiFi 状态」卡里有 IP）
+2. **路由器本地 DNS**：固件已设置 DHCP 主机名 `power`，多数路由器（OpenWrt / 华硕 / 部分小米、TP-Link）会把它注册到本地 DNS，可访问 `http://power` 或 `http://power.lan`
+3. 在路由器里给设备绑定静态 IP，收藏该地址
+
+## 📊 使用量统计（方案）
+
+想要知道"有多少设备在用这个固件"，推荐分两层看：
+
+### 方案 A：下载量统计（零成本、立即可用）
+
+GitHub 会为每个 Release 附件记录 `download_count`，可用 shields.io 徽章展示：
+
+```markdown
+![Downloads](https://img.shields.io/github/downloads/S0DX/esp8266-powerstrip/total)
+![Latest](https://img.shields.io/github/v/release/S0DX/esp8266-powerstrip)
+```
+
+查看明细：`GET https://api.github.com/repos/S0DX/esp8266-powerstrip/releases` → 每个 `assets[].download_count`。
+
+- 优点：无需任何后端、零隐私问题、立即生效
+- 局限：下载 ≠ 活跃设备（一次下载可能刷多台，或下载未使用）；OTA 自动升级不会重新下载（走 jsDelivr）
+
+### 方案 B：设备匿名心跳（可统计真实活跃设备数）
+
+固件在联网后上报一条匿名心跳，后端按天去重统计：
+
+```
+GET/POST https://<你的统计端点>/hb?v=5.9.13&id=<MAC哈希前16位>&t=<时间戳>
+```
+
+后端可选：Cloudflare Workers（免费额度足够，KV 存设备 ID + 最后上报日期）、Supabase、自建 VPS。
+
+统计口径：**独立设备数** = 不同 `id` 数量；**日活** = 当天有上报的 `id` 数。
+
+隐私与开关（必须遵守）：
+- 只上报 MAC 哈希（不可逆）、版本号、时间——**不上报 IP 以外的任何信息**（IP 由服务端看到，仅用于粗粒度地区统计，不落库）
+- 在「更多设置」提供**统计上报开关**（默认开启或默认关闭由你决定，README 需写明）
+- 纯局域网部署（无外网）时自动跳过
+
+> 方案 A 建议立即启用（README 徽章），方案 B 需要先有一个统计端点；如需，我可以生成 Cloudflare Worker 的实现骨架 + 固件侧上报代码（约 40 行，含开关与失败静默）。
 
 ## 技术细节
 
