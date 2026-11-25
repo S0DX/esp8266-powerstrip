@@ -50,6 +50,9 @@ public:
     // 空闲超时后自动进入 MODEM_SLEEP 省电降温
     static void noteActivity();
     static unsigned long idleSeconds();
+    // 保持局域网域名常醒（mDNS 随时可用，代价是 WiFi 不休眠）
+    static bool isMdnsAlways();
+    static void setMdnsAlways(bool enabled);
 
 private:
     static WiFiState state_;
@@ -64,7 +67,8 @@ private:
     static bool tx_power_limited_;
     static unsigned long sta_connected_time_;
     static unsigned long last_sleep_update_;
-    static unsigned long last_activity_ms_;   // 最近一次 Web/MQTT 活动时间（自适应休眠）
+    static unsigned long last_activity_ms_;
+    static bool mdns_always_;   // 最近一次 Web/MQTT 活动时间（自适应休眠）
     static WiFiSleepType current_sleep_mode_;
     // P1: 动态功率提升状态
     static float current_tx_power_;        // 当前实际发射功率

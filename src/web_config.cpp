@@ -247,7 +247,7 @@ void WebConfigServer::init() {
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
             "\"de\":%s,\"dt\":\"%s\",\"dl\":%s,\"dr\":%d,\"dm\":\"%s\",\"dp\":%s,\"pc\":%s,\"ds\":%d,\"ts\":%d,\"om\":%s,\"bd\":%s,"
             "\"mqe\":%s,\"mqs\":\"%s\",\"mqp\":%d,\"mqu\":\"%s\",\"mqpw\":\"%s\","
-            "\"ap\":\"%s\",\"aps\":\"%s\",\"host\":\"%s\",\"cv\":%d,\"bat\":%s,\"acap\":%s,\"wtpl\":%s,\"syslog\":%s,\"rst\":\"%s\"}",
+            "\"ap\":\"%s\",\"aps\":\"%s\",\"host\":\"%s\",\"cv\":%d,\"bat\":%s,\"acap\":%s,\"wtpl\":%s,\"syslog\":%s,\"slp\":%d,\"mda\":%s,\"rst\":\"%s\"}",
             WiFiManager::isConnected() ? "true" : "false",
             ip.c_str(),
             WiFiManager::getCurrentSSID().c_str(),
@@ -315,6 +315,8 @@ void WebConfigServer::init() {
             WiFiManager::isAutoCloseAPEnabled() ? "true" : "false",
             WiFiManager::isWiFiTxPowerLimited() ? "true" : "false",
             log_buffer_is_enabled() ? "true" : "false",
+            (int)WiFi.getSleepMode(),
+            WiFiManager::isMdnsAlways() ? "true" : "false",
             ESP.getResetReason().c_str()
         );
         int len = strlen(status_buf);
@@ -773,6 +775,13 @@ void WebConfigServer::init() {
         snprintf(b, sizeof(b), "{\"slp\":%d,\"idle\":%lu}",
                  (int)WiFi.getSleepMode(), WiFiManager::idleSeconds());
         server_->send(200, "application/json", b);
+    });
+
+    // 保持局域网域名常醒开关（功耗优化卡片）
+    server_->on("/api/mdnsaw", HTTP_GET, []() {
+        WiFiManager::setMdnsAlways(server_->arg("enabled") == "true");
+        server_->send(200, "application/json",
+            String("{\"enabled\":") + (WiFiManager::isMdnsAlways() ? "true" : "false") + "}");
     });
 
     server_->on("/api/log", HTTP_GET, []() {

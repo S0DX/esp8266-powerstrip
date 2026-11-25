@@ -254,6 +254,16 @@ pre{scrollbar-width:none}
 <button class="timer-btn" id="qtm" onclick="toggleQuickTimer()">启动倒计时</button>
 </div>
 </div>
+
+<div class="card" data-card="pwr">
+<div class="card-title">功耗优化</div>
+<div class="info-row"><span class="lbl">休眠状态</span><span id="pwrSlp" style="font-size:12px;color:#8e8e93">--</span></div>
+<div class="info-row" style="margin-bottom:4px">
+  <span class="lbl">保持局域网域名常醒</span>
+  <div class="toggle" id="mdaToggle" onclick="toggleMdnsAlways()"></div>
+</div>
+<div style="font-size:11px;color:#8e8e93;line-height:1.65">关闭时：空闲 5 分钟进入省电模式，WiFi 间歇休眠（约省 50mA，芯片降温 5-8°C）。开启后：WiFi 保持常醒，power.local 随时可解析，但功耗回到最高。</div>
+</div>
  
 </div>
 
@@ -813,6 +823,13 @@ function update(){
 
     var slog=document.getElementById('sysLogToggle');
     if(slog){if(d.syslog)slog.classList.add('on');else slog.classList.remove('on');}
+    var mdat=document.getElementById('mdaToggle');
+    if(mdat){if(d.mda)mdat.classList.add('on');else mdat.classList.remove('on');}
+    var slpEl=document.getElementById('pwrSlp');
+    if(slpEl){
+      slpEl.textContent=(d.slp===2?'省电模式（WiFi 休眠）':'常醒（WiFi 不休眠）');
+      slpEl.style.color=(d.slp===2?'#34c759':'#8e8e93');
+    }
     var slc=document.getElementById('sysLogContainer');
     var clc=document.getElementById('crashLogContainer');
     if(slc)slc.style.display=d.syslog?'flex':'none';
@@ -997,6 +1014,17 @@ function updateLog(){
     el.scrollTop=el.scrollHeight;
   }).catch(function(e){console.log('Log fetch error:',e);});
 }
+function toggleMdnsAlways(){
+  var el=document.getElementById('mdaToggle');
+  var enabled=el?!el.classList.contains('on'):false;
+  fetch('/api/mdnsaw?enabled='+(enabled?'true':'false'))
+    .then(function(r){return r.json();}).then(function(d){
+      if(el){if(d.enabled)el.classList.add('on');else el.classList.remove('on');}
+      showToast(d.enabled?'已开启：WiFi 保持常醒（域名随时可用）':'已关闭：空闲后自动进入省电模式');
+      update();
+    }).catch(function(){showToast('设置失败：设备无响应');});
+}
+
 function toggleSysLog(){
   var el=document.getElementById('sysLogToggle');
   var enabled=el?!el.classList.contains('on'):false;
@@ -1047,12 +1075,15 @@ function loadCardOrder(retries){
     }
   });
 }
-var cardOrder=[0,1,2,3,4,5];
-var cardVisibility=0x3F;
-var cardNames=['继电器控制','人来上电','实时电量','用电历史','WiFi 状态','快速倒计时'];
+var cardOrder=[0,1,2,3,4,5,6];
+var cardVisibility=0x7F;
+var cardNames=['继电器控制','人来上电','实时电量','用电历史','WiFi 状态','快速倒计时','功耗优化'];
 
 function renderCards(order){
-  cardOrder=order||[0,1,2,3,4,5];
+  cardOrder=order||[0,1,2,3,4,5,6];
+  // 旧固件保存的排序/可见性里没有第 7 张卡（功耗优化）→ 自动补上并默认显示
+  if(cardOrder.indexOf(6)<0)cardOrder.push(6);
+  if(!(cardVisibility&0x40))cardVisibility|=0x40;
   var container=document.getElementById('cardsContainer');
   if(!container)return;
   container.innerHTML='';
@@ -1091,7 +1122,7 @@ function renderCards(order){
 var IS_MOBILE=(window.innerWidth<768)||('ontouchstart' in window&&window.matchMedia('(pointer: coarse)').matches);
 var _mpg=1,_mswipe={x0:0,y0:0,t0:0,lock:'',base:0},_mInited=false;
 // 分屏编排：页0 数据 · 页1 控制 · 页2 定时 · 页3 人来上电+设备信息（默认页=页1）
-var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect']];
+var _PAGE_CARDS=[['power','history'],['relay','wifi'],['quicktimer'],['wifidetect','pwr']];
 function mobileArrange(){
   var mp=document.getElementById('mobilePages');
   if(!mp)return;

@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.10.9"
+#define VERSION "5.10.10"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -32,6 +32,7 @@
 #define EEPROM_CARD_VISIBILITY_ADDR 510
 #define EEPROM_CARD_ORDER_ADDR      504  // 6 bytes (504-509): 主页卡片排序，紧邻 CYCLE_PERIODS 之后
 #define EEPROM_BUTTON_AUTO_TIMER_ADDR 511
+#define EEPROM_MDNS_ALWAYS_ADDR 219  // 1 byte: 1=保持局域网域名常醒（WiFi 不休眠，放弃省电）
 #define EEPROM_BUTTON_DETECT_ADDR 254
 
 // 倒计时定时器 EEPROM（原定义于 gpio_mgr.cpp，统一迁移到此处）

@@ -20,6 +20,7 @@ unsigned long WiFiManager::sta_connected_time_ = 0;
 unsigned long WiFiManager::last_sleep_update_ = 0;
 WiFiSleepType WiFiManager::current_sleep_mode_ = WIFI_NONE_SLEEP;
 unsigned long WiFiManager::last_activity_ms_ = 0;
+bool WiFiManager::mdns_always_ = false;
 // P1: 动态功率提升状态
 float WiFiManager::current_tx_power_ = 14.0f;          // 默认 14dBm
 unsigned long WiFiManager::power_boost_until_ = 0;      // 0=未提升
@@ -44,6 +45,7 @@ void WiFiManager::init() {
 
     // 读取 STA 连接后自动关闭 AP 开关（默认不启用）
     auto_close_ap_ = (EEPROM.read(EEPROM_AUTO_CLOSE_AP_ADDR) == 0x01);
+    mdns_always_ = (EEPROM.read(EEPROM_MDNS_ALWAYS_ADDR) == 0x01);
     ap_closed_by_auto_ = false;
     sta_connected_time_ = 0;
 
@@ -508,6 +510,19 @@ void WiFiManager::noteActivity() {
     last_activity_ms_ = millis();
 }
 
+bool WiFiManager::isMdnsAlways() {
+    return mdns_always_;
+}
+
+void WiFiManager::setMdnsAlways(bool enabled) {
+    mdns_always_ = enabled;
+    EEPROM.write(EEPROM_MDNS_ALWAYS_ADDR, enabled ? 0x01 : 0x00);
+    EEPROM.commit();
+    Serial.printf("[WiFi] mDNS always-on: %s\n", enabled ? "enabled" : "disabled");
+    last_sleep_update_ = 0;   // 立即按新策略生效
+    updateSleepMode();
+}
+
 unsigned long WiFiManager::idleSeconds() {
     if (last_activity_ms_ == 0) return 0;
     return (unsigned long)((millis() - last_activity_ms_) / 1000UL);
@@ -534,6 +549,8 @@ void WiFiManager::updateSleepMode() {
         target = WIFI_NONE_SLEEP;
     } else if (WiFi.softAPgetStationNum() > 0) {
         target = WIFI_NONE_SLEEP;
+    } else if (mdns_always_) {
+        target = WIFI_NONE_SLEEP;   // 用户要求域名常醒：放弃省电，保证 mDNS/LLMNR 随时可用
     } else if (recently_active) {
         target = WIFI_NONE_SLEEP;   // 活跃期内保持 mDNS 组播监听
     }
