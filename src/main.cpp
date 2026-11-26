@@ -3,6 +3,7 @@
 #include <ESP.h>
 #include "config.h"
 #include "gpio_mgr.h"
+#include "relay_log.h"
 #include "button_mgr.h"
 #include "wifi_mgr.h"
 #include "ota_mgr.h"
@@ -79,6 +80,8 @@ void setup() {
     DBG_PRINTF("\n=================================\n");
 
     GPIOManager::init();
+    RelayLog::init();                      // 继电器动作日志（EEPROM 环形，掉电保留）
+    RelayLog::add(RelayLog::EV_BOOT, GPIOManager::getRelayMaster(), GPIOManager::getRelaySlave());
     ESP.wdtFeed();
 
     ButtonHandler::init();
@@ -145,6 +148,16 @@ void loop() {
     ESP.wdtFeed();
     GPIOManager::updateLEDs();
     GPIOManager::handleTimer();
+
+    // 启动记录补时：设备刚上电时 NTP 未同步（时间记为 0），
+    // 时间首次有效后补写一条带真实时间的"上电启动"，便于事后确定断电时刻
+    {
+        static bool boot_stamped = false;
+        if (!boot_stamped && TimeManager::isValid()) {
+            boot_stamped = true;
+            RelayLog::add(RelayLog::EV_BOOT, GPIOManager::getRelayMaster(), GPIOManager::getRelaySlave());
+        }
+    }
     GPIOManager::handleEnablePulse();
     GPIOManager::flushPendingEEPROM();
     ESP.wdtFeed();

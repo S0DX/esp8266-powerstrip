@@ -1,4 +1,5 @@
 #include "gpio_mgr.h"
+#include "relay_log.h"
 #include "config.h"
 #include <climits>
 #include <ESP8266WiFi.h>
@@ -469,6 +470,7 @@ void GPIOManager::setRelayMaster(bool on) {
         stopTimer();
     }
     relay_master_state_ = on;
+    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_);
     digitalWrite(RELAY_MASTER_PIN, on ? LOW : HIGH);
     if (on) {
         triggerRelayEnable();
@@ -493,6 +495,7 @@ void GPIOManager::setRelaySlave(bool on) {
         setRelayMaster(true);
     }
     relay_slave_state_ = on;
+    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_);
     digitalWrite(RELAY_SLAVE_PIN, on ? LOW : HIGH);
     triggerRelayEnable();
     setLEDWhite(on && relay_master_state_);
@@ -537,6 +540,7 @@ void GPIOManager::setRelays(bool master, bool slave) {
     }
     relay_master_state_ = master;
     relay_slave_state_ = slave;
+    RelayLog::add(RelayLog::EV_CHANGE, master, slave);   // 持久化动作记录（掉电保留）
     digitalWrite(RELAY_MASTER_PIN, master ? LOW : HIGH);
     digitalWrite(RELAY_SLAVE_PIN, slave ? LOW : HIGH);
     triggerRelayEnable();
@@ -588,6 +592,8 @@ void GPIOManager::setLatched(bool on) {
         DBG_PRINTF("[GPIO] Latch mode OFF: master relay stays ON until manually controlled\n");
     }
     MQTTManager::requestPublish();
+    RelayLog::add(on ? RelayLog::EV_LATCH_ON : RelayLog::EV_LATCH_OFF,
+                  relay_master_state_, relay_slave_state_);
 }
 
 bool GPIOManager::isLatched() {
@@ -792,6 +798,7 @@ void GPIOManager::stopTimer() {
     triggerRelayEnable();
     setLEDWhite(false);
     DBG_PRINTF("[GPIO] Timer stopped (source=%d, target=%d)\n", stopped_source, stopped_target);
+    RelayLog::add(RelayLog::EV_TIMER_STOP, relay_master_state_, relay_slave_state_);
 }
 
 bool GPIOManager::isTimerRunning() {
@@ -872,6 +879,7 @@ void GPIOManager::handleTimer() {
             if (should_be_on && !cycle_is_active_) {
                 cycle_is_active_ = true;
                 DBG_PRINTF("[GPIO] Cycle ON timeframe reached\n");
+                RelayLog::add(RelayLog::EV_CYCLE_ON, relay_master_state_, relay_slave_state_);
                 // 长通模式：循环独立控制从继电器（开侧 setRelays 被拦截后本就等效）
                 if (latch_enabled_) {
                     setRelaySlave(true);
@@ -881,6 +889,7 @@ void GPIOManager::handleTimer() {
             } else if (!should_be_on && cycle_is_active_) {
                 cycle_is_active_ = false;
                 DBG_PRINTF("[GPIO] Cycle OFF timeframe reached\n");
+                RelayLog::add(RelayLog::EV_CYCLE_OFF, relay_master_state_, relay_slave_state_);
                 // 长通模式：OFF 时段只关从继电器，主保持常开
                 if (latch_enabled_) {
                     setRelaySlave(false);

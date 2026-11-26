@@ -284,6 +284,7 @@ pre{scrollbar-width:none}
   <div class="toggle" id="sysLogToggle" onclick="toggleSysLog()"></div>
 </div>
 <div id="sysLogContainer" class="info-row" style="align-items:flex-start;flex-direction:column;margin-top:4px"><span class="lbl" style="margin-bottom:4px">系统日志</span><pre id="sysLog" style="width:100%;background:#f2f2f7;border-radius:8px;padding:8px;font-size:11px;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#333;line-height:1.4;margin:0">--</pre></div>
+<div id="relayLogContainer" class="info-row" style="align-items:flex-start;flex-direction:column;margin-top:4px"><span class="lbl" style="margin-bottom:4px">继电器动作记录（掉电保留）</span><pre id="relayLog" style="width:100%;background:#f0f7ff;border:1px solid #cfe4ff;border-radius:10px;padding:12px;font-size:12px;max-height:220px;min-height:60px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#0a4a8a;line-height:1.5;margin:0">--</pre></div>
 <div id="crashLogContainer" class="info-row" style="align-items:flex-start;flex-direction:column;margin-top:4px"><span class="lbl" style="margin-bottom:4px">崩溃前日志</span><pre id="crashLog" style="width:100%;background:#fff2f0;border:1px solid #ffccc7;border-radius:10px;padding:12px;font-size:12px;max-height:360px;min-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#c00;line-height:1.5;margin:0">--</pre></div>
 <button class="btn btn-ghost" style="margin-top:12px;width:100%" onclick="showMoreSettings()">更多设置</button>
 </div>
@@ -986,6 +987,7 @@ function update(){
     if(lo)lo.classList.add('hide');
     updateLog();
     updateCrashLog();
+    updateRelayLog();
     _updating=false;
     scheduleUpdate();
   }).catch(function(e){console.log('Status fetch error:',e);
@@ -995,6 +997,7 @@ function update(){
     if(lo)lo.classList.add('hide');
     updateLog();
     updateCrashLog();
+    updateRelayLog();
     _updating=false;
     scheduleUpdate();
   });
@@ -1050,6 +1053,21 @@ function toggleSysLog(){
       if(clc)clc.style.display=d.enabled?'flex':'none';
     }).catch(function(e){console.log('Sys log toggle error:',e);});
 }
+var _lastRelayText=null;
+var _lastRelayAt=0;
+function updateRelayLog(){
+  var now=Date.now();
+  if(now-_lastRelayAt<15000)return;
+  _lastRelayAt=now;
+  fetch('/api/relaylog').then(function(r){return r.text()}).then(function(txt){
+    var el=document.getElementById('relayLog');
+    if(!el) return;
+    if(txt===_lastRelayText) return;
+    _lastRelayText=txt;
+    el.textContent=txt;
+  }).catch(function(){});
+}
+
 var _lastCrashText=null;
 function updateCrashLog(){
   fetch('/api/crash_log').then(function(r){return r.json()}).then(function(d){

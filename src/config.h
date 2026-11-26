@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.10.15"
+#define VERSION "5.10.16"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -117,6 +117,8 @@
 // 24h 逐小时用电统计 EEPROM（滚动最近 24 小时，v5.9）
 // 布局：magic 4B + last_hour/head/count/pad 4B + 24×float 96B + saved_total float 4B = 108B
 #define EEPROM_ENERGY_HOURLY_ADDR  751  // 751-858
+#define EEPROM_RELAY_LOG_META_ADDR  859  // 2 bytes: head, count（继电器动作日志环形缓冲元信息）
+#define EEPROM_RELAY_LOG_DATA_ADDR  862  // 24*6=144 bytes (862-1005): 每条 unix(4)+code(1)+state(1)
 #define ENERGY_HOURLY_MAGIC        0x45483234UL  // "EH24"
 
 // 注：自动检测更新由前端浏览器直查 GitHub API 实现（设备端 TLS 受 RAM 限制

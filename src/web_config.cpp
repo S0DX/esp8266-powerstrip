@@ -1,4 +1,5 @@
 #include "web_config.h"
+#include "relay_log.h"
 #include "wifi_mgr.h"
 #include "gpio_mgr.h"
 #include "config.h"
@@ -770,6 +771,13 @@ void WebConfigServer::init() {
         WiFiManager::setMdnsAlways(server_->arg("enabled") == "true");
         server_->send(200, "application/json",
             String("{\"enabled\":") + (WiFiManager::isMdnsAlways() ? "true" : "false") + "}");
+    });
+
+    // 继电器动作记录（EEPROM 持久化，掉电保留，环形 24 条）
+    server_->on("/api/relaylog", HTTP_GET, []() {
+        static char rb[1400];
+        RelayLog::dump(rb, sizeof(rb));
+        server_->send(200, "text/plain; charset=utf-8", rb);
     });
 
     server_->on("/api/log", HTTP_GET, []() {
