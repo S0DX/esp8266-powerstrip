@@ -822,6 +822,16 @@ void GPIOManager::handleTimer() {
 
     // 24小时间段循环开启任务 (需要 NTP 完成同步后有效，与定时器互斥)
     // 断电重启后时间未校时（isValid()==false）时整段跳过，避免用 1970 年时间误判时段
+    // 定时器运行期间循环不执行（两者都控继电器，避免抢控）——
+    // 限流记录该情况，便于日后排查"到点没上电"
+    if (cycle_enabled_ && timer_running_ && cycle_period_count_ > 0) {
+        static unsigned long lastSkipLog = 0;
+        if (millis() - lastSkipLog > 60000UL) {
+            lastSkipLog = millis();
+            log_buffer_printf_force("[GPIO] cycle skipped: timer running (%lus left)",
+                (unsigned long)getTimerRemaining());
+        }
+    }
     if (cycle_enabled_ && !timer_running_ && cycle_period_count_ > 0 && TimeManager::isValid()) {
         time_t now = TimeManager::now();
         struct tm* timeinfo = localtime(&now);
@@ -847,9 +857,24 @@ void GPIOManager::handleTimer() {
                 }
             }
 
-            if (should_be_on && !cycle_is_active_) {
+            // 诊断快照（10 分钟一次）：时间/是否在窗口/激活标记/继电器/NTP 状态
+            {
+                static unsigned long lastSnap = 0;
+                if (millis() - lastSnap > 600000UL) {
+                    lastSnap = millis();
+                    log_buffer_printf_force("[GPIO] cycle %02d:%02d in=%d act=%d m=%d s=%d ntp=%d",
+                        timeinfo->tm_hour, timeinfo->tm_min,
+                        should_be_on ? 1 : 0, cycle_is_active_ ? 1 : 0,
+                        relay_master_state_ ? 1 : 0, relay_slave_state_ ? 1 : 0,
+                        TimeManager::isValid() ? 1 : 0);
+                }
+            }
+            // 自愈：处于时段内但继电器实际是关的（可能被定时器停止/手动/计费等关闭），
+            // 或内部状态标记丢失（重启后），都重新上电——循环语义即"时段内保持通电"
+            bool relay_off = latch_enabled_ ? !relay_slave_state_ : !relay_master_state_;
+            if (should_be_on && (!cycle_is_active_ || relay_off)) {
                 cycle_is_active_ = true;
-                DBG_PRINTF("[GPIO] Cycle ON timeframe reached\n");
+                DBG_PRINTF("[GPIO] Cycle ON timeframe (self-heal=%d)\n", relay_off ? 1 : 0);
                 // 长通模式：循环独立控制从继电器（开侧 setRelays 被拦截后本就等效）
                 if (latch_enabled_) {
                     setRelaySlave(true);

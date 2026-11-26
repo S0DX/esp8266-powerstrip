@@ -234,7 +234,7 @@ void MDNSResponder::process(WiFiUDP& udp, const IPAddress& ifIp, bool isAp, bool
     // 安卓等客户端是否真的发出了查询（ERR_NAME_NOT_RESOLVED 时区分"没问"还是"答得不对"）
     {
         static unsigned long lastLog = 0;
-        if (millis() - lastLog > 3000) {
+        if (millis() - lastLog > 60000UL) {   // 60s：mDNS 查询很频繁，避免冲刷日志缓冲
             lastLog = millis();
             log_buffer_printf_force("[MDNS] q from %s len=%d %s%s",
                 udp.remoteIP().toString().c_str(), len,
