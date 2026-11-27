@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.10.18"
+#define VERSION "5.10.19"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
@@ -33,7 +33,7 @@
 #define EEPROM_CARD_ORDER_ADDR      504  // 6 bytes (504-509): 主页卡片排序，紧邻 CYCLE_PERIODS 之后
 #define EEPROM_BUTTON_AUTO_TIMER_ADDR 511
 // 24h 循环触发上电后的拔除检测宽限期：期间空载不关，留时间给负载启动
-#define CYCLE_PLUG_GRACE_MS  (5UL * 60UL * 1000UL)   // 5 分钟
+#define CYCLE_PLUG_GRACE_MS  (10UL * 1000UL)         // 10 秒
 #define EEPROM_MDNS_ALWAYS_ADDR 219  // 1 byte: 1=保持局域网域名常醒（WiFi 不休眠，放弃省电）
 #define EEPROM_BUTTON_DETECT_ADDR 254
 
