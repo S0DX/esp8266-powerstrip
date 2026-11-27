@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define VERSION "5.10.16"
+#define VERSION "5.10.17"
 
 // GPIO 分配（根据 cmpower 原理图）
 #define BUTTON_PIN              4       // 按钮
