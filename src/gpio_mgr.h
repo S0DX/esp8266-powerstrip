@@ -18,6 +18,12 @@ public:
     static void setRelaySlaveDuringTimer();
     static void setRelays(bool master, bool slave);
     static bool getRelayMaster();
+    // 继电器动作原因（写入持久化日志用）：0未知 1手动 2循环 3倒计时 4长通
+    // 5计费 6拔除 7人来上电 8按键 9网页 10MQTT 11启动
+    static void setRelayReason(uint8_t r);
+    // 24h 循环开启后记录时刻，供拔除检测给宽限期（避免刚上电空载就被关）
+    static void markCycleSlaveOn();
+    static unsigned long cycleSlaveOnAgeMs();
     static bool getRelaySlave();
 
     static void setLocked(bool locked);
@@ -166,6 +172,8 @@ private:
     static bool cycle_enabled_;
     static uint8_t cycle_start_h_, cycle_start_m_, cycle_end_h_, cycle_end_m_;
     static bool cycle_is_active_;
+    static uint8_t relay_reason_;
+    static unsigned long cycle_slave_on_ms_;
     static const uint8_t MAX_CYCLE_PERIODS = 6;
     struct CyclePeriod { uint8_t sh, sm, eh, em; };
     static CyclePeriod cycle_periods_[MAX_CYCLE_PERIODS];

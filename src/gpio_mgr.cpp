@@ -52,6 +52,8 @@ uint8_t GPIOManager::cycle_start_m_ = 0;
 uint8_t GPIOManager::cycle_end_h_ = 0;
 uint8_t GPIOManager::cycle_end_m_ = 0;
 bool GPIOManager::cycle_is_active_ = false;
+uint8_t GPIOManager::relay_reason_ = 0;
+unsigned long GPIOManager::cycle_slave_on_ms_ = 0;
 GPIOManager::CyclePeriod GPIOManager::cycle_periods_[MAX_CYCLE_PERIODS] = {};
 uint8_t GPIOManager::cycle_period_count_ = 0;
 
@@ -470,7 +472,8 @@ void GPIOManager::setRelayMaster(bool on) {
         stopTimer();
     }
     relay_master_state_ = on;
-    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_);
+    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_, relay_reason_);
+    relay_reason_ = 0;
     digitalWrite(RELAY_MASTER_PIN, on ? LOW : HIGH);
     if (on) {
         triggerRelayEnable();
@@ -495,7 +498,8 @@ void GPIOManager::setRelaySlave(bool on) {
         setRelayMaster(true);
     }
     relay_slave_state_ = on;
-    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_);
+    RelayLog::add(RelayLog::EV_CHANGE, relay_master_state_, relay_slave_state_, relay_reason_);
+    relay_reason_ = 0;
     digitalWrite(RELAY_SLAVE_PIN, on ? LOW : HIGH);
     triggerRelayEnable();
     setLEDWhite(on && relay_master_state_);
@@ -523,6 +527,19 @@ void GPIOManager::setRelaySlaveDuringTimer() {
     MQTTManager::requestPublish();
 }
 
+void GPIOManager::setRelayReason(uint8_t r) {
+    relay_reason_ = r;
+}
+
+void GPIOManager::markCycleSlaveOn() {
+    cycle_slave_on_ms_ = millis();
+}
+
+unsigned long GPIOManager::cycleSlaveOnAgeMs() {
+    if (cycle_slave_on_ms_ == 0) return (unsigned long)-1;   // 从未由循环开启
+    return (unsigned long)(millis() - cycle_slave_on_ms_);
+}
+
 void GPIOManager::setRelays(bool master, bool slave) {
     // 长通模式：主继电器强制保持常开，从继电器部分仍按请求生效
     if (latch_enabled_ && !master) {
@@ -540,7 +557,8 @@ void GPIOManager::setRelays(bool master, bool slave) {
     }
     relay_master_state_ = master;
     relay_slave_state_ = slave;
-    RelayLog::add(RelayLog::EV_CHANGE, master, slave);   // 持久化动作记录（掉电保留）
+    RelayLog::add(RelayLog::EV_CHANGE, master, slave, relay_reason_);   // 持久化动作记录（含原因）
+    relay_reason_ = 0;
     digitalWrite(RELAY_MASTER_PIN, master ? LOW : HIGH);
     digitalWrite(RELAY_SLAVE_PIN, slave ? LOW : HIGH);
     triggerRelayEnable();
@@ -562,6 +580,7 @@ bool GPIOManager::isLocked() {
 }
 
 void GPIOManager::setLatched(bool on) {
+    setRelayReason(4);   // 4=长通
     if (on == latch_enabled_) {
         return;
     }
@@ -774,6 +793,7 @@ void GPIOManager::setTimerTarget(uint8_t target) {
 
 void GPIOManager::stopTimer() {
     if (!timer_running_) return;
+    setRelayReason(3);   // 3=倒计时（stopTimer 内的继电器关闭原因）
     uint8_t stopped_source = timer_source_;
     uint8_t stopped_target = timer_target_;
     timer_running_ = false;
@@ -789,6 +809,7 @@ void GPIOManager::stopTimer() {
             setLEDWhite(false);
         }
         DBG_PRINTF("[GPIO] Timer stopped in latch mode: slave OFF, master kept ON\n");
+        RelayLog::add(RelayLog::EV_TIMER_STOP, relay_master_state_, relay_slave_state_);
         return;
     }
     relay_master_state_ = false;
@@ -881,16 +902,19 @@ void GPIOManager::handleTimer() {
                 DBG_PRINTF("[GPIO] Cycle ON timeframe reached\n");
                 RelayLog::add(RelayLog::EV_CYCLE_ON, relay_master_state_, relay_slave_state_);
                 // 长通模式：循环独立控制从继电器（开侧 setRelays 被拦截后本就等效）
+                setRelayReason(2);   // 2=循环
                 if (latch_enabled_) {
                     setRelaySlave(true);
                 } else {
                     setRelays(true, !wifi_detect_only_master_);
                 }
+                markCycleSlaveOn();   // 记录循环上电时刻 → 拔除检测宽限期起点
             } else if (!should_be_on && cycle_is_active_) {
                 cycle_is_active_ = false;
                 DBG_PRINTF("[GPIO] Cycle OFF timeframe reached\n");
                 RelayLog::add(RelayLog::EV_CYCLE_OFF, relay_master_state_, relay_slave_state_);
                 // 长通模式：OFF 时段只关从继电器，主保持常开
+                setRelayReason(2);   // 2=循环
                 if (latch_enabled_) {
                     setRelaySlave(false);
                 } else {

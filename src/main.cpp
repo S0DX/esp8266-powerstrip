@@ -181,12 +181,19 @@ void loop() {
     static int latch_low_pwr_count = 0;
     bool latch_slave_on = GPIOManager::isLatched() && GPIOManager::getRelaySlave();
 
-    if (latch_slave_on && SY7T609::isReady()) {
+    // 循环刚上电的宽限期内不做拔除检测：负载（如设备本身）需要时间启动，
+    // 否则会出现"循环 06:30 上电 → 空载 5 秒被拔除检测关掉"的误动作。
+    // 注意只对"由循环开启"的这次生效，手动开启副继电器仍按原 5 秒判定。
+    bool in_cycle_grace = GPIOManager::cycleSlaveOnAgeMs() < CYCLE_PLUG_GRACE_MS;
+    if (in_cycle_grace) latch_low_pwr_count = 0;
+
+    if (latch_slave_on && !in_cycle_grace && SY7T609::isReady()) {
         float p = SY7T609::getPower();
         float th = GPIOManager::getPowerOffThreshold();
         // p > 0：计量未就绪/刚上电的 0 值不参与判定
         if (p > 0 && p < th) {
             if (++latch_low_pwr_count >= 5) {
+                GPIOManager::setRelayReason(6);   // 6=拔除（长通模式空载关副）
                 GPIOManager::setRelaySlave(false);
                 DBG_PRINTF("[PowerOff] Latch: slave load removed (power %.2fW < %.2fW x5s), slave OFF\n",
                     p, th);
@@ -200,7 +207,7 @@ void loop() {
     }
 
     // 非长通：原有拔除断电（功率低于阈值全关）
-    if (GPIOManager::isPowerOffEnabled() && !GPIOManager::isLatched() && SY7T609::isReady()) {
+    if (GPIOManager::isPowerOffEnabled() && !GPIOManager::isLatched() && !in_cycle_grace && SY7T609::isReady()) {
         static int low_power_count = 0;
         static bool monitoring = false;
         float power = SY7T609::getPower();
@@ -214,6 +221,7 @@ void loop() {
             if (power > 0 && power < GPIOManager::getPowerOffThreshold()) {
                 low_power_count++;
                 if (low_power_count >= 5) {
+GPIOManager::setRelayReason(6);  // 拔除断电
                     GPIOManager::setRelays(false, false);
                 DBG_PRINTF("[PowerOff] Device removed, power %.2fW below %.2fW, relays OFF\n",
                         power, GPIOManager::getPowerOffThreshold());
