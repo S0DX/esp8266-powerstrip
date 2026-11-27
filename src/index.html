@@ -85,6 +85,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue'
 .time-picker-item{height:36px;line-height:36px;font-size:20px;color:#1c1c1e;scroll-snap-align:center;transition:opacity .15s,color .15s;opacity:.2}
 .time-picker-item.active{opacity:1;font-weight:600}
 .time-picker-separator{font-size:17px;color:#8e8e93;padding:0 8px;position:relative;z-index:2}
+.wd-pill{flex:1;text-align:center;padding:9px 0;border-radius:8px;background:#f2f2f7;font-size:13px;color:#636366;cursor:pointer;user-select:none;transition:background .15s}
+.wd-pill.on{background:#007aff;color:#fff;font-weight:600}
 .cycle-track{position:relative;height:48px;background:#e9e9eb;border-radius:24px;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-y;transition:opacity .3s}
 .cycle-seg{position:absolute;top:6px;bottom:6px;border-radius:9px;min-width:6px}
 .seg-handle{position:absolute;top:0;bottom:0;width:28px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ew-resize;z-index:3}
@@ -437,6 +439,11 @@ pre{scrollbar-width:none}
 <p style="font-size:12px;color:#8e8e93;margin:8px 0 6px">在空白处按住并拖动即可添加时段 · 拖动色块边缘调整 · 轻点色块编辑</p>
 <p style="font-size:11px;color:#c7c7cc;margin:0 0 10px">结束早于开始表示跨午夜 · 需先完成时间同步（联网或手机校正） · 最多 6 个时段</p>
 <div id="cyclePeriodsList"></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px">
+  <span style="font-size:14px">生效星期</span>
+  <span id="cycleWdHint" style="font-size:11px;color:#8e8e93">全周</span>
+</div>
+<div id="cycleWeekdays" style="display:flex;gap:6px;margin-bottom:4px"></div>
 <button id="cyclePowerBtn" class="btn" style="margin:16px 0 0" onclick="toggleCycle()">启用循环</button>
 </div>
 
@@ -831,6 +838,7 @@ function update(){
     if(slog){if(d.syslog)slog.classList.add('on');else slog.classList.remove('on');}
     var mdat=document.getElementById('mdaToggle');
     if(mdat){if(d.mda)mdat.classList.add('on');else mdat.classList.remove('on');}
+    if(typeof d.wd==='number')renderWeekdays(d.wd);
     var slpEl=document.getElementById('pwrSlp');
     if(slpEl){
       slpEl.textContent=(d.slp===2?'省电模式（WiFi 休眠）':'常醒（WiFi 不休眠）');
@@ -2016,6 +2024,45 @@ function toggleLock(){
     var lk=document.getElementById('lk');
     if(d.locked)lk.classList.add('on');else lk.classList.remove('on');
   }).catch(function(e){console.log('Lock error:',e)});
+}
+
+// ===== 24h 循环：生效星期（全局一份位图，bit0=周一…bit6=周日）=====
+var _cycleWd=0x7F;
+var _wdNames=['一','二','三','四','五','六','日'];
+function renderWeekdays(wd){
+  if(typeof wd==='number')_cycleWd=wd;
+  var box=document.getElementById('cycleWeekdays');
+  if(!box)return;
+  if(!box.children.length){
+    for(var i=0;i<7;i++){
+      var d=document.createElement('div');
+      d.className='wd-pill';
+      d.setAttribute('data-bit',i);
+      d.textContent=_wdNames[i];
+      d.onclick=function(){toggleWeekday(parseInt(this.getAttribute('data-bit'),10));};
+      box.appendChild(d);
+    }
+  }
+  for(var i=0;i<7;i++){
+    var el=box.children[i];
+    if((_cycleWd>>i)&1)el.classList.add('on');else el.classList.remove('on');
+  }
+  var hint=document.getElementById('cycleWdHint');
+  if(hint){
+    var w=_cycleWd&0x7F;
+    hint.textContent = (w===0x7F) ? '全周' : ((w===0x3E) ? '周二至周六' : ('已选 ' + w.toString(2).split('').filter(function(c){return c==='1';}).length + ' 天'));
+  }
+}
+function toggleWeekday(bit){
+  var wd=(_cycleWd&0x7F)^(1<<bit);
+  if(wd===0){showToast('至少选择一天');return;}
+  fetch('/api/cycle?wd='+wd).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){showToast('保存失败');return;}
+    _cycleWd=d.wd;
+    renderWeekdays(_cycleWd);
+    showToast('生效星期已更新');
+    update();
+  }).catch(function(){showToast('保存失败：设备无响应');});
 }
 
 // ============= 24h 循环时间段（可视化时间轴） =============

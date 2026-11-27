@@ -230,7 +230,7 @@ void WebConfigServer::init() {
             "\"ver\":\"%s\",\"up\":%lu,\"m\":%s,\"s\":%s,"
             "\"lk\":%s,\"lt\":%s,\"te\":%s,\"tr\":%s,\"td\":%d,\"tl\":%lu,"
             "\"v\":%.1f,\"i\":%.3f,\"p\":%.2f,\"e\":%.2f,\"me\":%s,\"cal\":%s,\"rl\":%s,"
-            "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,"
+            "\"ce\":%s,\"sh\":%d,\"sm\":%d,\"eh\":%d,\"em\":%d,\"cpc\":%d,\"ca\":%s,\"tv\":%s,\"cm\":%d,\"wd\":%d,"
             "\"tstr\":\"%s\",\"tsrc\":%d,\"tage\":%lu,"
             "\"pe\":%s,\"pt\":%.2f,"
             "\"be\":%s,\"bt\":%.2f,\"bm\":%.2f,\"btt\":%d,\"bmo\":%d,\"bu\":%.2f,\"bum\":%.2f,\"but\":%u,\"bsr\":%d,\"ep\":%.2f,\"mo\":%.2f,\"lm\":%.2f,"
@@ -263,6 +263,7 @@ void WebConfigServer::init() {
             GPIOManager::isCycleActive() ? "true" : "false",
             timeValid ? "true" : "false",
             curMins,
+            (int)GPIOManager::getCycleWeekdays(),
             timeStr,
             (int)TimeManager::source(),
             (unsigned long)TimeManager::syncAgeSec(),
@@ -394,6 +395,17 @@ void WebConfigServer::init() {
             // 长通模式下循环降级为独立控制从继电器（见 handleTimer），仍可启用
             GPIOManager::setCycleEnabled(on);
             server_->send(200, "application/json", "{\"enabled\":" + String(on ? "true" : "false") + "}");
+            return;
+        }
+        if (server_->hasArg("wd")) {
+            int wd = server_->arg("wd").toInt();
+            if (wd <= 0 || wd > 0x7F) {
+                server_->send(200, "application/json", "{\"ok\":false,\"error\":\"invalid weekdays\"}");
+                return;
+            }
+            GPIOManager::setCycleWeekdays((uint8_t)wd);
+            server_->send(200, "application/json",
+                String("{\"ok\":true,\"wd\":") + String((int)GPIOManager::getCycleWeekdays()) + "}");
             return;
         }
         if (server_->hasArg("add")) {

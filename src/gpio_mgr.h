@@ -22,6 +22,9 @@ public:
     // 5计费 6拔除 7人来上电 8按键 9网页 10MQTT 11启动
     static void setRelayReason(uint8_t r);
     // 24h 循环开启后记录时刻，供拔除检测给宽限期（避免刚上电空载就被关）
+    // 24h 循环生效星期（位图：bit0=周一…bit6=周日；0x7F=全周）
+    static void setCycleWeekdays(uint8_t wd);
+    static uint8_t getCycleWeekdays();
     static void markCycleSlaveOn();
     static unsigned long cycleSlaveOnAgeMs();
     static bool getRelaySlave();
@@ -174,6 +177,7 @@ private:
     static bool cycle_is_active_;
     static uint8_t relay_reason_;
     static unsigned long cycle_slave_on_ms_;
+    static uint8_t cycle_weekdays_;
     static const uint8_t MAX_CYCLE_PERIODS = 6;
     struct CyclePeriod { uint8_t sh, sm, eh, em; };
     static CyclePeriod cycle_periods_[MAX_CYCLE_PERIODS];

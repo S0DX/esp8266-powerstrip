@@ -54,6 +54,7 @@ uint8_t GPIOManager::cycle_end_m_ = 0;
 bool GPIOManager::cycle_is_active_ = false;
 uint8_t GPIOManager::relay_reason_ = 0;
 unsigned long GPIOManager::cycle_slave_on_ms_ = 0;
+uint8_t GPIOManager::cycle_weekdays_ = 0x7F;
 GPIOManager::CyclePeriod GPIOManager::cycle_periods_[MAX_CYCLE_PERIODS] = {};
 uint8_t GPIOManager::cycle_period_count_ = 0;
 
@@ -177,6 +178,10 @@ void GPIOManager::init() {
 
     if (EEPROM.read(EEPROM_CYCLE_MAGIC_ADDR) == EEPROM_CYCLE_MAGIC_V3) {
         cycle_enabled_ = (EEPROM.read(EEPROM_CYCLE_ENABLED_ADDR) == 1);
+        {   // 生效星期：未初始化(0xFF)或非法位 → 全周
+            uint8_t wd = EEPROM.read(EEPROM_CYCLE_WEEKDAYS_ADDR);
+            cycle_weekdays_ = (wd <= 0x7F && wd != 0) ? wd : 0x7F;
+        }
         cycle_period_count_ = EEPROM.read(EEPROM_CYCLE_COUNT_ADDR);
         if (cycle_period_count_ > MAX_CYCLE_PERIODS) cycle_period_count_ = 0;
         for (uint8_t i = 0; i < cycle_period_count_; i++) {
@@ -529,6 +534,19 @@ void GPIOManager::setRelaySlaveDuringTimer() {
 
 void GPIOManager::setRelayReason(uint8_t r) {
     relay_reason_ = r;
+}
+
+void GPIOManager::setCycleWeekdays(uint8_t wd) {
+    wd &= 0x7F;
+    if (wd == 0) return;   // 至少一天，避免"永不运行"的误配置
+    cycle_weekdays_ = wd;
+    EEPROM.write(EEPROM_CYCLE_WEEKDAYS_ADDR, wd);
+    requestEEPROMCommit();
+    DBG_PRINTF("[GPIO] Cycle weekdays: 0x%02X\n", wd);
+}
+
+uint8_t GPIOManager::getCycleWeekdays() {
+    return cycle_weekdays_;
 }
 
 void GPIOManager::markCycleSlaveOn() {
@@ -897,7 +915,13 @@ void GPIOManager::handleTimer() {
                         TimeManager::isValid() ? 1 : 0);
                 }
             }
-            if (should_be_on && !cycle_is_active_) {
+            // 星期过滤：只影响"开启"动作（tm_wday 0=周日 → bit6；1-6=周一至周六 → bit0-5）
+            uint8_t wd_bit = (timeinfo->tm_wday == 0) ? 6 : (uint8_t)(timeinfo->tm_wday - 1);
+            bool weekday_ok = (cycle_weekdays_ >> wd_bit) & 0x01;
+
+            if (should_be_on && !cycle_is_active_ && !weekday_ok) {
+                // 今天不在生效星期：本时段不开启（若已开启则不动，让其走完）
+            } else if (should_be_on && !cycle_is_active_) {
                 cycle_is_active_ = true;
                 DBG_PRINTF("[GPIO] Cycle ON timeframe reached\n");
                 RelayLog::add(RelayLog::EV_CYCLE_ON, relay_master_state_, relay_slave_state_);
